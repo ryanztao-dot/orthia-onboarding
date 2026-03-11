@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 
 function generateSlug(): string {
@@ -22,22 +22,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const client = new Anthropic();
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      tools: [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: 5,
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: `Research the dental/medical clinic called "${clinicName}". Find the following information:
+    const response = await client.responses.create({
+      model: "gpt-4o",
+      tools: [{ type: "web_search_preview" }],
+      input: `Research the dental/medical clinic called "${clinicName}". Find the following information:
 1. The full official practice name
 2. The practice type (e.g., "General Dentistry", "Orthodontics", "Pediatric Dentistry", "Multi-specialty", "Oral Surgery", etc.)
 3. The number of locations (e.g., "1", "3", "5+")
@@ -47,15 +39,17 @@ Respond with ONLY a JSON object in this exact format, no other text:
 {"practiceName": "...", "practiceType": "...", "locations": "...", "pms": "..."}
 
 If you cannot find a specific piece of information, use null for that field. For practiceName, fall back to "${clinicName}" if you can't find the official name.`,
-        },
-      ],
     });
 
     // Extract text from response
     let resultText = "";
-    for (const block of response.content) {
-      if (block.type === "text") {
-        resultText += block.text;
+    for (const item of response.output) {
+      if (item.type === "message") {
+        for (const block of item.content) {
+          if (block.type === "output_text") {
+            resultText += block.text;
+          }
+        }
       }
     }
 
