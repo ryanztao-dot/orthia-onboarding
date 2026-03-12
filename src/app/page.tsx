@@ -40,7 +40,14 @@ export default function Home() {
       {/* Navbar */}
       <nav className="absolute top-0 z-10 w-full px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <img src="/logo.png" alt="Orthia" className="h-10" />
+          <a href="https://orthia.io" className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
+              <img src="/logo.png" alt="Orthia" className="h-8 w-8 object-contain" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white">
+              Orthia <span className="font-light text-blue-200">AI</span>
+            </span>
+          </a>
           <a
             href="/admin"
             className="text-sm font-medium text-white/70 transition hover:text-white"
@@ -242,27 +249,17 @@ export default function Home() {
         </div>
       </div>
 
-      {/* CTA Section */}
-      <div className="mx-auto max-w-4xl px-6 py-24 text-center">
-        <h2 className="text-3xl font-bold text-gray-900">
-          Ready to Get Started?
-        </h2>
-        <p className="mx-auto mt-4 max-w-xl text-gray-500">
-          Join the practices that trust Orthia to handle their calls. Onboarding
-          takes less than 2 minutes.
-        </p>
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="mt-8 rounded-lg bg-blue-600 px-8 py-3.5 font-semibold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
-        >
-          Start Onboarding Now
-        </button>
-      </div>
-
       {/* Footer */}
-      <footer className="border-t bg-white py-8">
+      <footer className="border-t bg-white py-10">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6">
-          <img src="/logo.png" alt="Orthia" className="h-8 opacity-70" />
+          <a href="https://orthia.io" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100">
+              <img src="/logo.png" alt="Orthia" className="h-6 w-6 object-contain" />
+            </div>
+            <span className="text-lg font-bold tracking-tight text-gray-900">
+              Orthia <span className="font-light text-gray-400">AI</span>
+            </span>
+          </a>
           <p className="text-sm text-gray-400">
             © {new Date().getFullYear()} Orthia. All rights reserved.
           </p>
