@@ -111,6 +111,27 @@ export default function AdminPage() {
     }
   }
 
+  async function handleDelete(id: string, practiceName: string) {
+    if (!window.confirm(`Delete submission for "${practiceName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/submissions?id=${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete");
+      }
+
+      fetchSubmissions();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete submission");
+    }
+  }
+
   if (!authenticated) {
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
@@ -219,7 +240,7 @@ export default function AdminPage() {
                 <th className="px-4 py-3 font-medium">Phone</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 font-medium">Link</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -254,14 +275,22 @@ export default function AdminPage() {
                     {new Date(s.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <a
-                      href={`/onboard/${s.slug}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Open
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`/onboard/${s.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Open
+                      </a>
+                      <button
+                        onClick={() => handleDelete(s.id, s.practice_name)}
+                        className="text-red-500 hover:text-red-700 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
