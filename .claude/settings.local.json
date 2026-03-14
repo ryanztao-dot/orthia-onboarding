@@ -37,7 +37,9 @@
       "Bash(powershell -Command \"$env:Path\")",
       "Bash(powershell -Command \"Write-Output $env:Path\")",
       "Bash(cat /d/orthia-onboarding/src/app/onboard/[slug]/page.tsx)",
-      "Bash(powershell -Command \"Get-Item ''D:\\\\orthia-onboarding\\\\public\\\\logo.png'' | Select-Object Length, LastWriteTime\")"
+      "Bash(powershell -Command \"Get-Item ''D:\\\\orthia-onboarding\\\\public\\\\logo.png'' | Select-Object Length, LastWriteTime\")",
+      "Bash(powershell -Command \"& { [System.IO.File]::ReadAllBytes\\(''D:\\\\orthia-onboarding\\\\public\\\\logo.png''\\)[0..3] -join '','' }\")",
+      "Bash(copy \"D:\\\\orthia-onboarding\\\\public\\\\logo.png\" \"D:\\\\orthia-onboarding\\\\src\\\\app\\\\icon.png\")"
     ]
   }
 }

@@ -4,10 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Orthia Onboarding",
   description: "Clinic onboarding portal",
-  icons: {
-    icon: { url: "/logo.png", type: "image/png" },
-    apple: "/logo.png",
-  },
 };
 
 export default function RootLayout({
