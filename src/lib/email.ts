@@ -6,7 +6,7 @@ export async function sendEditLink(
   to: string,
   practiceName: string,
   editUrl: string
-) {
+): Promise<boolean> {
   try {
     await resend.emails.send({
       from: "Orthia Onboarding <noreply@orthia.io>",
@@ -39,8 +39,10 @@ export async function sendEditLink(
         </div>
       `,
     });
+    return true;
   } catch (err) {
     console.error("Failed to send edit link email:", err);
     // Don't throw — email failure shouldn't block submission
+    return false;
   }
 }

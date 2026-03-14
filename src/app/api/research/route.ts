@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { researchClinic, createSubmission, createBlankSubmission } from "@/lib/research";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function POST(req: NextRequest) {
-  // Check admin auth
-  const authCookie = req.cookies.get("admin_auth");
-  if (authCookie?.value !== "true") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const body = await req.json();
   const { clinicName, step } = body;

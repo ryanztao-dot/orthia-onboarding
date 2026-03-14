@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import type { Submission } from "@/lib/types";
 
@@ -153,6 +153,9 @@ function OnboardForm() {
   const [editToken, setEditToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [emailWarning, setEmailWarning] = useState(false);
+  const [activeSection, setActiveSection] = useState(1);
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Basic info
   const [practiceName, setPracticeName] = useState("");
@@ -457,8 +460,28 @@ function OnboardForm() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
+  // Track which section is visible for progress indicator
+  useEffect(() => {
+    if (loading || notFound || (submitted && !editing)) return;
+    const sections = Array.from({ length: 11 }, (_, i) => document.getElementById(`section-${i + 1}`));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const num = parseInt(entry.target.id.replace("section-", ""), 10);
+            if (!isNaN(num)) setActiveSection(num);
+          }
+        }
+      },
+      { rootMargin: "-20% 0px -70% 0px" }
+    );
+    sections.forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, [loading, notFound, submitted, editing]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return; // Double-submit guard
     if (!acceptedTerms || !confirmedAccuracy) return;
     setSubmitting(true);
     setSubmitError("");
@@ -498,9 +521,12 @@ function OnboardForm() {
         }),
       });
 
+      const result = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to submit");
+        throw new Error(result.error || "Failed to submit");
+      }
+      if (result.emailSent === false) {
+        setEmailWarning(true);
       }
       setSubmitted(true);
       setEditing(false);
@@ -556,7 +582,11 @@ function OnboardForm() {
           {editUrl && (editTokenFromUrl || editToken) && (
             <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
               <p className="text-sm font-medium text-blue-800 mb-2">Need to make changes later?</p>
-              <p className="text-xs text-blue-700 mb-3">We sent an edit link to your email. You can also copy it below:</p>
+              <p className="text-xs text-blue-700 mb-3">
+                {emailWarning
+                  ? "We couldn't send the edit link email. Make sure to save the link below:"
+                  : "We sent an edit link to your email. You can also copy it below:"}
+              </p>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -600,6 +630,31 @@ function OnboardForm() {
         </div>
       </div>
 
+      {/* Sticky Progress Bar */}
+      <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-3xl px-6 py-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-gray-500">Section {activeSection} of 11</p>
+            <div className="flex gap-1">
+              {Array.from({ length: 11 }, (_, i) => (
+                <button
+                  key={i}
+                  onClick={() => document.getElementById(`section-${i + 1}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  className={`h-2 rounded-full transition-all ${
+                    i + 1 === activeSection
+                      ? "w-6 bg-blue-600"
+                      : i + 1 < activeSection
+                        ? "w-2 bg-blue-300"
+                        : "w-2 bg-gray-200"
+                  }`}
+                  aria-label={`Go to section ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-3xl px-6 pt-8">
         {editing && (
           <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
@@ -611,7 +666,7 @@ function OnboardForm() {
           <p className="mt-1 text-gray-500">Please complete all sections below. Pre-filled information can be edited.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-10">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-10">
 
           {/* Section 1: Basic Practice Information */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">

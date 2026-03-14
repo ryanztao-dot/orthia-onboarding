@@ -7,7 +7,7 @@ export function generateEditToken(): string {
 }
 
 export function generateSlug(): string {
-  return Math.random().toString(36).substring(2, 10);
+  return crypto.randomBytes(12).toString("base64url");
 }
 
 export const RESEARCH_PROMPT = (clinicName: string) => `You are researching a dental/orthodontic practice called "${clinicName}" to pre-fill an onboarding form.
