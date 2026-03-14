@@ -232,12 +232,11 @@ export default function AdminPage() {
             <thead className="border-b bg-gray-50">
               <tr>
                 <th className="px-4 py-3 font-medium">Practice Name</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Locations</th>
                 <th className="px-4 py-3 font-medium">PMS</th>
                 <th className="px-4 py-3 font-medium">Contact</th>
                 <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Phone</th>
+                <th className="px-4 py-3 font-medium">Office Phone</th>
+                <th className="px-4 py-3 font-medium">Insurance</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -246,7 +245,7 @@ export default function AdminPage() {
             <tbody>
               {submissions.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                     No submissions yet
                   </td>
                 </tr>
@@ -254,12 +253,17 @@ export default function AdminPage() {
               {submissions.map((s) => (
                 <tr key={s.id} className="border-b last:border-0">
                   <td className="px-4 py-3 font-medium">{s.practice_name}</td>
-                  <td className="px-4 py-3">{s.practice_type || "—"}</td>
-                  <td className="px-4 py-3">{s.locations || "—"}</td>
                   <td className="px-4 py-3">{s.pms || "—"}</td>
                   <td className="px-4 py-3">{s.contact_name || "—"}</td>
                   <td className="px-4 py-3">{s.email || "—"}</td>
-                  <td className="px-4 py-3">{s.phone || "—"}</td>
+                  <td className="px-4 py-3">{s.office_phone || "—"}</td>
+                  <td className="px-4 py-3">
+                    {(s.form_data as Record<string, unknown>)?.wantsInsurance ? (
+                      <span className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Yes</span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${

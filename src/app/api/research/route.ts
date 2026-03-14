@@ -33,10 +33,11 @@ export async function POST(req: NextRequest) {
 1. The full official practice name
 2. The practice type (e.g., "General Dentistry", "Orthodontics", "Pediatric Dentistry", "Multi-specialty", "Oral Surgery", etc.)
 3. The number of locations (e.g., "1", "3", "5+")
-4. The Practice Management Software (PMS) they use if you can find it (e.g., "Dentrix", "Eaglesoft", "Open Dental", "Curve Dental", etc.)
+4. The Practice Management Software (PMS) they use if you can find it (e.g., "Dolphin", "Dentrix", "Cloud 9", "Ortho2", "Open Dental", "Eaglesoft", "OrthoTrac", "Curve Dental", etc.)
+5. The practice website URL
 
 Respond with ONLY a JSON object in this exact format, no other text:
-{"practiceName": "...", "practiceType": "...", "locations": "...", "pms": "..."}
+{"practiceName": "...", "practiceType": "...", "locations": "...", "pms": "...", "website": "..."}
 
 If you cannot find a specific piece of information, use null for that field. For practiceName, fall back to "${clinicName}" if you can't find the official name.`,
     });
@@ -60,6 +61,7 @@ If you cannot find a specific piece of information, use null for that field. For
       practiceType: null as string | null,
       locations: null as string | null,
       pms: null as string | null,
+      website: null as string | null,
     };
 
     if (jsonMatch) {
@@ -70,6 +72,7 @@ If you cannot find a specific piece of information, use null for that field. For
           practiceType: parsed.practiceType || null,
           locations: parsed.locations || null,
           pms: parsed.pms || null,
+          website: parsed.website || null,
         };
       } catch {
         // Keep defaults if JSON parsing fails
@@ -85,12 +88,18 @@ If you cannot find a specific piece of information, use null for that field. For
         practice_type: researchData.practiceType,
         locations: researchData.locations,
         pms: researchData.pms,
+        website: researchData.website,
         slug,
         status: "pending",
         contact_name: null,
         email: null,
         phone: null,
         notes: null,
+        dba_name: null,
+        office_phone: null,
+        office_email: null,
+        contact_role: null,
+        form_data: {},
       })
       .select()
       .single();

@@ -11,6 +11,12 @@ export interface Submission {
   slug: string;
   status: "pending" | "complete";
   notes: string | null;
+  dba_name: string | null;
+  office_phone: string | null;
+  office_email: string | null;
+  website: string | null;
+  contact_role: string | null;
+  form_data: Record<string, unknown> | null;
 }
 
 export interface Database {

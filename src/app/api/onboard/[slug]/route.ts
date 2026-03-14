@@ -34,13 +34,16 @@ export async function PUT(
     .from("submissions")
     .update({
       practice_name: body.practice_name,
-      practice_type: body.practice_type,
-      locations: body.locations,
-      pms: body.pms,
+      dba_name: body.dba_name || null,
+      office_phone: body.office_phone || null,
+      office_email: body.office_email || null,
+      website: body.website || null,
+      pms: body.pms || null,
       contact_name: body.contact_name,
+      contact_role: body.contact_role || null,
       email: body.email,
       phone: body.phone,
-      notes: body.notes,
+      form_data: body.form_data || {},
       status: "complete",
     })
     .eq("slug", slug)

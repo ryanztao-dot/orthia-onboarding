@@ -12,7 +12,13 @@ create table public.submissions (
   phone text,
   slug text unique not null,
   status text default 'pending' not null check (status in ('pending', 'complete')),
-  notes text
+  notes text,
+  dba_name text,
+  office_phone text,
+  office_email text,
+  website text,
+  contact_role text,
+  form_data jsonb default '{}'::jsonb
 );
 
 -- Enable Row Level Security
@@ -29,3 +35,15 @@ create index idx_submissions_slug on public.submissions (slug);
 
 -- Create index on created_at for sorting
 create index idx_submissions_created_at on public.submissions (created_at desc);
+
+
+-- ============================================================
+-- MIGRATION: Run this if you already have the table and need to add new columns
+-- ============================================================
+-- ALTER TABLE public.submissions
+--   ADD COLUMN IF NOT EXISTS dba_name text,
+--   ADD COLUMN IF NOT EXISTS office_phone text,
+--   ADD COLUMN IF NOT EXISTS office_email text,
+--   ADD COLUMN IF NOT EXISTS website text,
+--   ADD COLUMN IF NOT EXISTS contact_role text,
+--   ADD COLUMN IF NOT EXISTS form_data jsonb DEFAULT '{}'::jsonb;

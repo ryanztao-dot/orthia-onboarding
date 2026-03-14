@@ -14,7 +14,8 @@
       "Read(//c/Program Files/**)",
       "Bash(gh api:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:orthia.io)"
     ]
   }
 }
