@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Submission } from "@/lib/types";
 
+interface ResearchData {
+  found: boolean;
+  confidence: string;
+  data: Record<string, unknown>;
+}
+
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
@@ -16,6 +22,9 @@ export default function AdminPage() {
   const [generating, setGenerating] = useState(false);
   const [generatedLink, setGeneratedLink] = useState("");
   const [generateError, setGenerateError] = useState("");
+  const [researchResult, setResearchResult] = useState<ResearchData | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [hint, setHint] = useState("");
 
   const fetchSubmissions = useCallback(async () => {
     setLoadingSubmissions(true);
@@ -35,7 +44,6 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    // Check if already authenticated
     fetch("/api/submissions")
       .then((res) => {
         if (res.ok) {
@@ -78,37 +86,103 @@ export default function AdminPage() {
     }
   }
 
-  async function handleGenerate(e: React.FormEvent) {
+  async function handleResearch(e: React.FormEvent) {
     e.preventDefault();
     if (!clinicName.trim()) return;
 
     setGenerating(true);
     setGeneratedLink("");
     setGenerateError("");
+    setResearchResult(null);
 
     try {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinicName: clinicName.trim() }),
+        body: JSON.stringify({ clinicName: clinicName.trim(), step: "research" }),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Failed to generate");
+        throw new Error(err.error || "Failed to research");
+      }
+
+      const result: ResearchData = await res.json();
+      setResearchResult(result);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Failed to research");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!researchResult) return;
+    setConfirming(true);
+    setGenerateError("");
+
+    try {
+      const res = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clinicName: clinicName.trim(),
+          step: "confirm",
+          researchData: researchResult.data,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to save");
       }
 
       const data = await res.json();
       setGeneratedLink(window.location.origin + data.link);
       setClinicName("");
+      setResearchResult(null);
+      setHint("");
       fetchSubmissions();
     } catch (err) {
-      setGenerateError(
-        err instanceof Error ? err.message : "Failed to generate form"
-      );
+      setGenerateError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setGenerating(false);
+      setConfirming(false);
     }
+  }
+
+  async function handleSkip() {
+    setConfirming(true);
+    setGenerateError("");
+
+    try {
+      const res = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicName: clinicName.trim(), step: "skip" }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to create");
+      }
+
+      const data = await res.json();
+      setGeneratedLink(window.location.origin + data.link);
+      setClinicName("");
+      setResearchResult(null);
+      setHint("");
+      fetchSubmissions();
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Failed to create");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  function handleRetry() {
+    setResearchResult(null);
+    setGenerateError("");
+    setHint("Try adding city or state for better results");
   }
 
   async function handleDelete(id: string, practiceName: string) {
@@ -117,15 +191,11 @@ export default function AdminPage() {
     }
 
     try {
-      const res = await fetch(`/api/submissions?id=${id}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(`/api/submissions?id=${id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Failed to delete");
       }
-
       fetchSubmissions();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete submission");
@@ -148,9 +218,7 @@ export default function AdminPage() {
             className="w-full rounded border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
-          {loginError && (
-            <p className="text-sm text-red-600">{loginError}</p>
-          )}
+          {loginError && <p className="text-sm text-red-600">{loginError}</p>}
           <button
             type="submit"
             disabled={loginLoading}
@@ -163,54 +231,129 @@ export default function AdminPage() {
     );
   }
 
+  const rd = researchResult?.data;
+
   return (
     <main className="mx-auto max-w-6xl p-6">
       <h1 className="text-2xl font-bold">Admin Dashboard</h1>
 
       {/* Generate Form */}
-      <form
-        onSubmit={handleGenerate}
-        className="mt-6 flex items-end gap-3 rounded-lg border bg-white p-4"
-      >
-        <div className="flex-1">
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Clinic Name
-          </label>
-          <input
-            type="text"
-            value={clinicName}
-            onChange={(e) => setClinicName(e.target.value)}
-            placeholder="e.g. Smile Dental Group"
-            className="w-full rounded border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={generating}
-          className="rounded bg-blue-600 px-5 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+      {!researchResult && (
+        <form
+          onSubmit={handleResearch}
+          className="mt-6 flex items-end gap-3 rounded-lg border bg-white p-4"
         >
-          {generating ? "Researching..." : "Generate Form"}
-        </button>
-      </form>
+          <div className="flex-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Clinic Name
+            </label>
+            <input
+              type="text"
+              value={clinicName}
+              onChange={(e) => setClinicName(e.target.value)}
+              placeholder={hint || "e.g. Smile Dental Group"}
+              className="w-full rounded border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            {hint && <p className="mt-1 text-xs text-blue-600">{hint}</p>}
+          </div>
+          <button
+            type="submit"
+            disabled={generating}
+            className="rounded bg-blue-600 px-5 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {generating ? "Researching..." : "Generate Form"}
+          </button>
+        </form>
+      )}
 
-      {generateError && (
+      {/* Confirmation Card — AI found results */}
+      {researchResult && researchResult.found && (
+        <div className="mt-6 rounded-lg border bg-white p-5">
+          <h3 className="font-semibold text-gray-900">Is this the right practice?</h3>
+          <div className="mt-3 space-y-1.5">
+            <div className="flex gap-2 text-sm">
+              <span className="w-20 shrink-0 font-medium text-gray-500">Name</span>
+              <span className="text-gray-900">{(rd?.officialName as string) || clinicName}</span>
+            </div>
+            {rd?.address && (
+              <div className="flex gap-2 text-sm">
+                <span className="w-20 shrink-0 font-medium text-gray-500">Address</span>
+                <span className="text-gray-900">{rd.address as string}</span>
+              </div>
+            )}
+            {rd?.officePhone && (
+              <div className="flex gap-2 text-sm">
+                <span className="w-20 shrink-0 font-medium text-gray-500">Phone</span>
+                <span className="text-gray-900">{rd.officePhone as string}</span>
+              </div>
+            )}
+            {rd?.website && (
+              <div className="flex gap-2 text-sm">
+                <span className="w-20 shrink-0 font-medium text-gray-500">Website</span>
+                <a href={rd.website as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline truncate">{rd.website as string}</a>
+              </div>
+            )}
+            {rd?.practiceType && (
+              <div className="flex gap-2 text-sm">
+                <span className="w-20 shrink-0 font-medium text-gray-500">Type</span>
+                <span className="text-gray-900">{rd.practiceType as string}</span>
+              </div>
+            )}
+          </div>
+          {researchResult.confidence !== "high" && (
+            <p className="mt-2 text-xs text-amber-600">Low confidence match — please verify.</p>
+          )}
+          <div className="mt-4 flex gap-2">
+            <button onClick={handleConfirm} disabled={confirming} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {confirming ? "Creating..." : "Yes, create form"}
+            </button>
+            <button onClick={handleRetry} disabled={confirming} className="rounded border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              Wrong, try again
+            </button>
+            <button onClick={handleSkip} disabled={confirming} className="rounded border px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+              Skip, create blank
+            </button>
+          </div>
+          {generateError && <p className="mt-2 text-sm text-red-600">{generateError}</p>}
+        </div>
+      )}
+
+      {/* Not Found Card */}
+      {researchResult && !researchResult.found && (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <h3 className="font-semibold text-gray-900">Couldn&apos;t find &ldquo;{clinicName}&rdquo;</h3>
+          <p className="mt-1 text-sm text-gray-600">No matching practice found. Try a more specific name or create a blank form.</p>
+          <div className="mt-4 flex gap-2">
+            <button onClick={handleRetry} disabled={confirming} className="rounded border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white disabled:opacity-50">
+              Try again
+            </button>
+            <button onClick={handleSkip} disabled={confirming} className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {confirming ? "Creating..." : "Create blank form"}
+            </button>
+          </div>
+          {generateError && <p className="mt-2 text-sm text-red-600">{generateError}</p>}
+        </div>
+      )}
+
+      {generateError && !researchResult && (
         <p className="mt-2 text-sm text-red-600">{generateError}</p>
       )}
 
       {generatedLink && (
         <div className="mt-3 rounded border border-green-200 bg-green-50 p-3">
-          <p className="text-sm font-medium text-green-800">
-            Shareable link created:
-          </p>
-          <a
-            href={generatedLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 underline break-all"
-          >
-            {generatedLink}
-          </a>
+          <p className="text-sm font-medium text-green-800">Shareable link created:</p>
+          <div className="mt-1 flex items-center gap-2">
+            <a href={generatedLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline break-all">
+              {generatedLink}
+            </a>
+            <button
+              onClick={() => { navigator.clipboard.writeText(generatedLink); }}
+              className="shrink-0 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+            >
+              Copy
+            </button>
+          </div>
         </div>
       )}
 
@@ -218,13 +361,44 @@ export default function AdminPage() {
       <div className="mt-8">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Submissions</h2>
-          <button
-            onClick={fetchSubmissions}
-            disabled={loadingSubmissions}
-            className="text-sm text-blue-600 hover:underline disabled:opacity-50"
-          >
-            {loadingSubmissions ? "Refreshing..." : "Refresh"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (submissions.length === 0) return;
+                const headers = ["Practice Name","PMS","Contact","Email","Office Phone","Insurance","Status","Created","Link"];
+                const rows = submissions.map(s => [
+                  s.practice_name,
+                  s.pms || "",
+                  s.contact_name || "",
+                  s.email || "",
+                  s.office_phone || "",
+                  (s.form_data as Record<string, unknown>)?.wantsInsurance ? "Yes" : "No",
+                  s.status,
+                  new Date(s.created_at).toLocaleDateString(),
+                  window.location.origin + `/onboard/${s.slug}`,
+                ]);
+                const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob([csv], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `orthia-submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              disabled={submissions.length === 0}
+              className="text-sm text-green-600 hover:underline disabled:opacity-50"
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={fetchSubmissions}
+              disabled={loadingSubmissions}
+              className="text-sm text-blue-600 hover:underline disabled:opacity-50"
+            >
+              {loadingSubmissions ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 overflow-x-auto rounded-lg border bg-white">
@@ -288,6 +462,12 @@ export default function AdminPage() {
                       >
                         Open
                       </a>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(window.location.origin + `/onboard/${s.slug}`)}
+                        className="text-gray-500 hover:text-gray-700 hover:underline"
+                      >
+                        Copy
+                      </button>
                       <button
                         onClick={() => handleDelete(s.id, s.practice_name)}
                         className="text-red-500 hover:text-red-700 hover:underline"

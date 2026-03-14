@@ -15,7 +15,15 @@
       "Bash(gh api:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
-      "WebFetch(domain:orthia.io)"
+      "WebFetch(domain:orthia.io)",
+      "Bash(xargs grep:*)",
+      "Bash(wc -l /d/orthia-onboarding/src/app/onboard/[slug]/page.tsx)",
+      "Bash(npx next:*)",
+      "Bash(npm run:*)",
+      "Bash(where node:*)",
+      "Bash(where npm:*)",
+      "Bash(find /d/orthia-onboarding -type f -name *admin*)",
+      "Bash(npm install:*)"
     ]
   }
 }

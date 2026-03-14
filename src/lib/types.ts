@@ -17,6 +17,7 @@ export interface Submission {
   website: string | null;
   contact_role: string | null;
   form_data: Record<string, unknown> | null;
+  edit_token: string | null;
 }
 
 export interface Database {

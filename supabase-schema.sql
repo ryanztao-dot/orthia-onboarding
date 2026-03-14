@@ -18,7 +18,8 @@ create table public.submissions (
   office_email text,
   website text,
   contact_role text,
-  form_data jsonb default '{}'::jsonb
+  form_data jsonb default '{}'::jsonb,
+  edit_token text unique
 );
 
 -- Enable Row Level Security
@@ -47,3 +48,6 @@ create index idx_submissions_created_at on public.submissions (created_at desc);
 --   ADD COLUMN IF NOT EXISTS website text,
 --   ADD COLUMN IF NOT EXISTS contact_role text,
 --   ADD COLUMN IF NOT EXISTS form_data jsonb DEFAULT '{}'::jsonb;
+
+-- MIGRATION: Add edit_token column (run if you already have the table)
+-- ALTER TABLE public.submissions ADD COLUMN IF NOT EXISTS edit_token text UNIQUE;

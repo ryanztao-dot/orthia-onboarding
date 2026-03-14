@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import type { Submission } from "@/lib/types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -126,12 +126,31 @@ const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm foc
 const textareaCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
 
 export default function OnboardPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-500">
+          <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          Loading...
+        </div>
+      </main>
+    }>
+      <OnboardForm />
+    </Suspense>
+  );
+}
+
+function OnboardForm() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const editTokenFromUrl = searchParams.get("edit") || "";
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editToken, setEditToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -234,16 +253,129 @@ export default function OnboardPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [confirmedAccuracy, setConfirmedAccuracy] = useState(false);
 
+  // localStorage auto-save key
+  const storageKey = `orthia-draft-${slug}`;
+
+  // Save form progress to localStorage on changes (debounced)
   useEffect(() => {
-    fetch(`/api/onboard/${slug}`)
+    if (loading || notFound || (submitted && !editing)) return;
+    const timer = setTimeout(() => {
+      try {
+        const draft = {
+          practiceName, dbaName, officePhone, officeEmail, website, address,
+          multiLocation, additionalLocations, parkingNotes, buildingAccess,
+          timezone, doctorNames, pointOfContact, billingContact, emergencyContact,
+          schedulingContact, clinicHours, bookingScope, apptTypes, otherApptType,
+          allowedProviders, ageRestrictions, minRescheduleHours, minCancelHours,
+          urgentReviewTask, intakeFields, otherIntakeFields, chiefConcernRequired,
+          bookWithoutInsurance, emergencyActions, wordsToAvoid, wordsToUse,
+          humorAllowed, lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
+          providerLastName, orgLegalName, voiceGender, languages, otherLanguage,
+          personality, tone, commonQuestions, insuranceNotAccepted, financingOptions,
+          consultationPrice, retainerProcess, bracesAlignerFaqs, missedApptPolicy,
+          cancellationPolicy, lateArrivalPolicy, schoolExcusePolicy, paymentMethods,
+          formsNeeded, referralRequirements, adultChildFaqs, pmsName, pmsVersion,
+          contactName, contactRole, contactEmail, contactPhone,
+        };
+        localStorage.setItem(storageKey, JSON.stringify(draft));
+      } catch { /* ignore quota errors */ }
+    }, 1000);
+    return () => clearTimeout(timer);
+  });
+
+  // Restore from localStorage
+  function restoreFromStorage() {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d.practiceName) setPracticeName(d.practiceName);
+      if (d.dbaName) setDbaName(d.dbaName);
+      if (d.officePhone) setOfficePhone(d.officePhone);
+      if (d.officeEmail) setOfficeEmail(d.officeEmail);
+      if (d.website) setWebsite(d.website);
+      if (d.address) setAddress(d.address);
+      if (d.multiLocation !== undefined) setMultiLocation(d.multiLocation);
+      if (d.additionalLocations) setAdditionalLocations(d.additionalLocations);
+      if (d.parkingNotes) setParkingNotes(d.parkingNotes);
+      if (d.buildingAccess) setBuildingAccess(d.buildingAccess);
+      if (d.timezone) setTimezone(d.timezone);
+      if (d.doctorNames) setDoctorNames(d.doctorNames);
+      if (d.pointOfContact) setPointOfContact(d.pointOfContact);
+      if (d.billingContact) setBillingContact(d.billingContact);
+      if (d.emergencyContact) setEmergencyContact(d.emergencyContact);
+      if (d.schedulingContact) setSchedulingContact(d.schedulingContact);
+      if (d.clinicHours) setClinicHours(d.clinicHours);
+      if (d.bookingScope) setBookingScope(d.bookingScope);
+      if (d.apptTypes) setApptTypes(d.apptTypes);
+      if (d.otherApptType) setOtherApptType(d.otherApptType);
+      if (d.allowedProviders) setAllowedProviders(d.allowedProviders);
+      if (d.ageRestrictions) setAgeRestrictions(d.ageRestrictions);
+      if (d.minRescheduleHours) setMinRescheduleHours(d.minRescheduleHours);
+      if (d.minCancelHours) setMinCancelHours(d.minCancelHours);
+      if (d.urgentReviewTask !== undefined) setUrgentReviewTask(d.urgentReviewTask);
+      if (d.intakeFields) setIntakeFields(d.intakeFields);
+      if (d.otherIntakeFields) setOtherIntakeFields(d.otherIntakeFields);
+      if (d.chiefConcernRequired !== undefined) setChiefConcernRequired(d.chiefConcernRequired);
+      if (d.bookWithoutInsurance !== undefined) setBookWithoutInsurance(d.bookWithoutInsurance);
+      if (d.emergencyActions) setEmergencyActions(d.emergencyActions);
+      if (d.wordsToAvoid) setWordsToAvoid(d.wordsToAvoid);
+      if (d.wordsToUse) setWordsToUse(d.wordsToUse);
+      if (d.humorAllowed !== undefined) setHumorAllowed(d.humorAllowed);
+      if (d.lunchStart) setLunchStart(d.lunchStart);
+      if (d.lunchEnd) setLunchEnd(d.lunchEnd);
+      if (d.wantsInsurance !== undefined) setWantsInsurance(d.wantsInsurance);
+      if (d.npi) setNpi(d.npi);
+      if (d.providerFirstName) setProviderFirstName(d.providerFirstName);
+      if (d.providerLastName) setProviderLastName(d.providerLastName);
+      if (d.orgLegalName) setOrgLegalName(d.orgLegalName);
+      if (d.voiceGender) setVoiceGender(d.voiceGender);
+      if (d.languages) setLanguages(d.languages);
+      if (d.otherLanguage) setOtherLanguage(d.otherLanguage);
+      if (d.personality) setPersonality(d.personality);
+      if (d.tone) setTone(d.tone);
+      if (d.commonQuestions) setCommonQuestions(d.commonQuestions);
+      if (d.insuranceNotAccepted) setInsuranceNotAccepted(d.insuranceNotAccepted);
+      if (d.financingOptions) setFinancingOptions(d.financingOptions);
+      if (d.consultationPrice) setConsultationPrice(d.consultationPrice);
+      if (d.retainerProcess) setRetainerProcess(d.retainerProcess);
+      if (d.bracesAlignerFaqs) setBracesAlignerFaqs(d.bracesAlignerFaqs);
+      if (d.missedApptPolicy) setMissedApptPolicy(d.missedApptPolicy);
+      if (d.cancellationPolicy) setCancellationPolicy(d.cancellationPolicy);
+      if (d.lateArrivalPolicy) setLateArrivalPolicy(d.lateArrivalPolicy);
+      if (d.schoolExcusePolicy) setSchoolExcusePolicy(d.schoolExcusePolicy);
+      if (d.paymentMethods) setPaymentMethods(d.paymentMethods);
+      if (d.formsNeeded) setFormsNeeded(d.formsNeeded);
+      if (d.referralRequirements) setReferralRequirements(d.referralRequirements);
+      if (d.adultChildFaqs) setAdultChildFaqs(d.adultChildFaqs);
+      if (d.pmsName) setPmsName(d.pmsName);
+      if (d.pmsVersion) setPmsVersion(d.pmsVersion);
+      if (d.contactName) setContactName(d.contactName);
+      if (d.contactRole) setContactRole(d.contactRole);
+      if (d.contactEmail) setContactEmail(d.contactEmail);
+      if (d.contactPhone) setContactPhone(d.contactPhone);
+    } catch { /* ignore parse errors */ }
+  }
+
+  useEffect(() => {
+    const fetchUrl = editTokenFromUrl
+      ? `/api/onboard/${slug}?edit=${editTokenFromUrl}`
+      : `/api/onboard/${slug}`;
+    fetch(fetchUrl)
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
       .then((data) => {
         const s = data.submission as Submission;
+        // Store the edit token from DB
+        if (s.edit_token) setEditToken(s.edit_token);
         if (s.status === "complete") {
           setSubmitted(true);
+          // If valid edit token in URL, auto-enter edit mode
+          if (editTokenFromUrl && editTokenFromUrl === s.edit_token) {
+            setEditing(true);
+          }
         }
         // Load pre-filled fields
         setPracticeName(s.practice_name || "");
@@ -315,9 +447,14 @@ export default function OnboardPage() {
           if (fd.adultChildFaqs) setAdultChildFaqs(fd.adultChildFaqs as string);
           if (fd.pmsVersion) setPmsVersion(fd.pmsVersion as string);
         }
+        // After loading server data, overlay any localStorage draft (for pending forms)
+        if (s.status !== "complete") {
+          restoreFromStorage();
+        }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -357,6 +494,7 @@ export default function OnboardPage() {
           email: contactEmail,
           phone: contactPhone,
           form_data: formData,
+          edit_token: editToken || editTokenFromUrl,
         }),
       });
 
@@ -365,6 +503,8 @@ export default function OnboardPage() {
         throw new Error(err.error || "Failed to submit");
       }
       setSubmitted(true);
+      setEditing(false);
+      try { localStorage.removeItem(storageKey); } catch {}
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to submit");
@@ -399,7 +539,8 @@ export default function OnboardPage() {
     );
   }
 
-  if (submitted) {
+  if (submitted && !editing) {
+    const editUrl = editToken ? `${window.location.origin}/onboard/${slug}?edit=${editToken}` : "";
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
         <div className="max-w-md rounded-xl border bg-white p-10 text-center shadow-sm">
@@ -412,6 +553,32 @@ export default function OnboardPage() {
           <p className="mt-3 text-gray-600">
             Your onboarding information has been submitted successfully. Our team will review your information and get you onboarded.
           </p>
+          {editUrl && (editTokenFromUrl || editToken) && (
+            <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
+              <p className="text-sm font-medium text-blue-800 mb-2">Need to make changes later?</p>
+              <p className="text-xs text-blue-700 mb-3">We sent an edit link to your email. You can also copy it below:</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={editUrl}
+                  className="flex-1 rounded border border-blue-200 bg-white px-2 py-1.5 text-xs text-gray-600 truncate"
+                  onClick={e => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(editUrl)}
+                  className="shrink-0 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          )}
+          {!editTokenFromUrl && !editToken && (
+            <p className="mt-6 text-sm text-gray-500">
+              Need to make changes? Check your email for the edit link we sent when you first submitted.
+            </p>
+          )}
         </div>
       </main>
     );
@@ -434,6 +601,11 @@ export default function OnboardPage() {
       </div>
 
       <div className="mx-auto max-w-3xl px-6 pt-8">
+        {editing && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <p className="text-sm text-blue-800 font-medium">You are editing a previously submitted form. Changes will update your submission.</p>
+          </div>
+        )}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Practice Onboarding</h1>
           <p className="mt-1 text-gray-500">Please complete all sections below. Pre-filled information can be edited.</p>
@@ -889,7 +1061,7 @@ export default function OnboardPage() {
                 disabled={submitting || !acceptedTerms || !confirmedAccuracy}
                 className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submitting ? "Submitting..." : "Submit Onboarding Form"}
+                {submitting ? "Submitting..." : editing ? "Update Submission" : "Submit Onboarding Form"}
               </button>
             </div>
           </section>

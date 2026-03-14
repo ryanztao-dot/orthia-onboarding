@@ -2,23 +2,63 @@
 
 import { useState } from "react";
 
+interface ResearchData {
+  found: boolean;
+  confidence: string;
+  data: Record<string, unknown>;
+}
+
 export default function Home() {
   const [clinicName, setClinicName] = useState("");
   const [researching, setResearching] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
+  const [hint, setHint] = useState("");
+  const [researchResult, setResearchResult] = useState<ResearchData | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!clinicName.trim()) return;
 
     setResearching(true);
+    setError("");
+    setResearchResult(null);
+
+    try {
+      const res = await fetch("/api/self-serve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicName: clinicName.trim(), step: "research" }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Something went wrong");
+      }
+
+      const result: ResearchData = await res.json();
+      setResearchResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setResearching(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!researchResult) return;
+    setConfirming(true);
     setError("");
 
     try {
       const res = await fetch("/api/self-serve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinicName: clinicName.trim() }),
+        body: JSON.stringify({
+          clinicName: clinicName.trim(),
+          step: "confirm",
+          researchData: researchResult.data,
+        }),
       });
 
       if (!res.ok) {
@@ -30,10 +70,41 @@ export default function Home() {
       window.location.href = data.link;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setResearching(false);
+      setConfirming(false);
     }
   }
+
+  async function handleSkip() {
+    setConfirming(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/self-serve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinicName: clinicName.trim(), step: "skip" }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Something went wrong");
+      }
+
+      const data = await res.json();
+      window.location.href = data.link;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setConfirming(false);
+    }
+  }
+
+  function handleRetry() {
+    setResearchResult(null);
+    setError("");
+    setHint("Try adding your city or state for better results");
+  }
+
+  const rd = researchResult?.data;
 
   return (
     <main className="min-h-screen">
@@ -74,53 +145,148 @@ export default function Home() {
             you&apos;re all set.
           </p>
 
-          {/* Self-serve form */}
-          <form onSubmit={handleSubmit} className="mx-auto mt-10 max-w-lg">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                value={clinicName}
-                onChange={(e) => setClinicName(e.target.value)}
-                placeholder="Enter your practice name"
-                className="flex-1 rounded-lg border-0 px-5 py-3.5 text-gray-900 shadow-lg placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white"
-                required
-              />
-              <button
-                type="submit"
-                disabled={researching}
-                className="rounded-lg bg-white px-8 py-3.5 font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 disabled:opacity-50"
-              >
-                {researching ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Looking up...
-                  </span>
-                ) : (
-                  "Get Started"
-                )}
-              </button>
-            </div>
-            {error && <p className="mt-3 text-sm text-red-200">{error}</p>}
-          </form>
+          {/* Search form — hidden when showing results */}
+          {!researchResult && (
+            <form onSubmit={handleSearch} className="mx-auto mt-10 max-w-lg">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={clinicName}
+                  onChange={(e) => setClinicName(e.target.value)}
+                  placeholder={hint || "Enter your practice name"}
+                  className="flex-1 rounded-lg border-0 px-5 py-3.5 text-gray-900 shadow-lg placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={researching}
+                  className="rounded-lg bg-white px-8 py-3.5 font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {researching ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Looking up...
+                    </span>
+                  ) : (
+                    "Get Started"
+                  )}
+                </button>
+              </div>
+              {error && <p className="mt-3 text-sm text-red-200">{error}</p>}
+              {hint && <p className="mt-2 text-sm text-blue-200">{hint}</p>}
+            </form>
+          )}
 
-          <p className="mt-4 text-sm text-blue-200/60">
-            No account needed. Takes less than 2 minutes.
-          </p>
+          {/* Confirmation Card — AI found results */}
+          {researchResult && researchResult.found && (
+            <div className="mx-auto mt-10 max-w-lg rounded-xl bg-white p-6 text-left shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900">Is this your practice?</h3>
+              <div className="mt-4 space-y-2">
+                <div className="flex gap-2">
+                  <span className="w-20 shrink-0 text-sm font-medium text-gray-500">Name</span>
+                  <span className="text-sm text-gray-900">{(rd?.officialName as string) || clinicName}</span>
+                </div>
+                {rd?.address && (
+                  <div className="flex gap-2">
+                    <span className="w-20 shrink-0 text-sm font-medium text-gray-500">Address</span>
+                    <span className="text-sm text-gray-900">{rd.address as string}</span>
+                  </div>
+                )}
+                {rd?.officePhone && (
+                  <div className="flex gap-2">
+                    <span className="w-20 shrink-0 text-sm font-medium text-gray-500">Phone</span>
+                    <span className="text-sm text-gray-900">{rd.officePhone as string}</span>
+                  </div>
+                )}
+                {rd?.website && (
+                  <div className="flex gap-2">
+                    <span className="w-20 shrink-0 text-sm font-medium text-gray-500">Website</span>
+                    <a href={rd.website as string} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline truncate">{rd.website as string}</a>
+                  </div>
+                )}
+                {rd?.practiceType && (
+                  <div className="flex gap-2">
+                    <span className="w-20 shrink-0 text-sm font-medium text-gray-500">Type</span>
+                    <span className="text-sm text-gray-900">{rd.practiceType as string}</span>
+                  </div>
+                )}
+              </div>
+              {researchResult.confidence !== "high" && (
+                <p className="mt-3 text-xs text-amber-600">
+                  We&apos;re not 100% sure this is the right match. Please verify the details above.
+                </p>
+              )}
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <button
+                  onClick={handleConfirm}
+                  disabled={confirming}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {confirming ? "Creating form..." : "Yes, this is us"}
+                </button>
+                <button
+                  onClick={handleRetry}
+                  disabled={confirming}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Not right, try again
+                </button>
+              </div>
+              <button
+                onClick={handleSkip}
+                disabled={confirming}
+                className="mt-2 w-full text-center text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-50"
+              >
+                Skip AI lookup, fill in manually
+              </button>
+              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            </div>
+          )}
+
+          {/* Not Found Card — AI couldn't find the practice */}
+          {researchResult && !researchResult.found && (
+            <div className="mx-auto mt-10 max-w-lg rounded-xl bg-white p-6 text-left shadow-xl">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                  <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.232 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">We couldn&apos;t find your practice</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    No matching results were found for &ldquo;{clinicName}&rdquo;. You can try again with more details or fill in the form manually.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <button
+                  onClick={handleRetry}
+                  disabled={confirming}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Try again
+                </button>
+                <button
+                  onClick={handleSkip}
+                  disabled={confirming}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {confirming ? "Creating form..." : "Fill in manually"}
+                </button>
+              </div>
+              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            </div>
+          )}
+
+          {!researchResult && !researching && (
+            <p className="mt-4 text-sm text-blue-200/60">
+              No account needed. Takes less than 2 minutes.
+            </p>
+          )}
         </div>
       </div>
 
@@ -150,11 +316,11 @@ export default function Home() {
               2
             </div>
             <h3 className="mt-5 text-lg font-semibold text-gray-900">
-              Review Pre-Filled Details
+              Confirm &amp; Review Details
             </h3>
             <p className="mt-2 leading-relaxed text-gray-500">
-              We&apos;ll auto-fill your practice type, locations, and PMS. Just
-              review and correct anything that&apos;s off.
+              Verify the AI found the right practice, then review and edit
+              any pre-filled information.
             </p>
           </div>
           <div className="text-center">
