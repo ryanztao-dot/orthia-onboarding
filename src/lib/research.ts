@@ -61,15 +61,36 @@ export interface ResearchResult {
 }
 
 export async function researchClinic(clinicName: string): Promise<ResearchResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key is not configured. Add OPENAI_API_KEY to your environment variables.");
+  }
+
   const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const response = await client.responses.create({
-    model: "gpt-4o",
-    tools: [{ type: "web_search_preview" }],
-    input: RESEARCH_PROMPT(clinicName),
-  });
+  let response;
+  try {
+    response = await client.responses.create({
+      model: "gpt-4o",
+      tools: [{ type: "web_search_preview" }],
+      input: RESEARCH_PROMPT(clinicName),
+    });
+  } catch (err: unknown) {
+    const error = err as { status?: number; code?: string; message?: string };
+    console.error("OpenAI API error:", error);
+
+    if (error.status === 401) {
+      throw new Error("OpenAI API key is invalid. Check your OPENAI_API_KEY environment variable.");
+    }
+    if (error.status === 429) {
+      throw new Error("OpenAI rate limit reached. Please wait a moment and try again.");
+    }
+    if (error.status === 402 || error.code === "insufficient_quota") {
+      throw new Error("OpenAI API credits exhausted. Add more credits at platform.openai.com.");
+    }
+    throw new Error(`OpenAI API error: ${error.message || "Unknown error"}`);
+  }
 
   let resultText = "";
   for (const item of response.output) {
@@ -82,6 +103,11 @@ export async function researchClinic(clinicName: string): Promise<ResearchResult
     }
   }
 
+  if (!resultText) {
+    console.error("OpenAI returned empty response. Full output:", JSON.stringify(response.output));
+    throw new Error("AI returned an empty response. The model may be unavailable — try again.");
+  }
+
   const jsonMatch = resultText.match(/\{[\s\S]*\}/);
   let research: Record<string, unknown> = {};
 
@@ -89,8 +115,12 @@ export async function researchClinic(clinicName: string): Promise<ResearchResult
     try {
       research = JSON.parse(jsonMatch[0]);
     } catch {
-      // Keep empty
+      console.error("Failed to parse AI response JSON:", resultText.slice(0, 500));
+      throw new Error("AI returned invalid data. Please try again.");
     }
+  } else {
+    console.error("No JSON found in AI response:", resultText.slice(0, 500));
+    throw new Error("AI returned an unexpected format. Please try again.");
   }
 
   const confidence = (research.confidence as string) || "none";

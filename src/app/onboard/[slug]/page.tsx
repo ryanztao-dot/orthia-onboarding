@@ -145,6 +145,7 @@ function OnboardForm() {
   const searchParams = useSearchParams();
   const slug = params.slug as string;
   const editTokenFromUrl = searchParams.get("edit") || "";
+  const isAdminView = searchParams.get("view") === "admin";
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -565,7 +566,7 @@ function OnboardForm() {
     );
   }
 
-  if (submitted && !editing) {
+  if (submitted && !editing && !isAdminView) {
     const editUrl = editToken ? `${window.location.origin}/onboard/${slug}?edit=${editToken}` : "";
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
@@ -662,6 +663,11 @@ function OnboardForm() {
       </div>
 
       <div className="mx-auto max-w-3xl px-6 pt-8">
+        {isAdminView && submitted && (
+          <div className="mb-4 rounded-lg border border-gray-300 bg-gray-100 p-3">
+            <p className="text-sm text-gray-700 font-medium">Read-only view — this form has been submitted.</p>
+          </div>
+        )}
         {editing && (
           <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
             <p className="text-sm text-blue-800 font-medium">You are editing a previously submitted form. Changes will update your submission.</p>
@@ -672,7 +678,7 @@ function OnboardForm() {
           <p className="mt-1 text-gray-500">Please complete all sections below. Pre-filled information can be edited.</p>
         </div>
 
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-10">
+        <form ref={formRef} onSubmit={handleSubmit} className={`space-y-10 ${isAdminView && submitted ? "pointer-events-none opacity-75" : ""}`}
 
           {/* Section 1: Basic Practice Information */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
@@ -1088,6 +1094,7 @@ function OnboardForm() {
           </section>
 
           {/* Legal & Submit */}
+          {!(isAdminView && submitted) && (
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={11} title="Terms & Agreement" />
             <div className="space-y-4">
@@ -1126,6 +1133,7 @@ function OnboardForm() {
               </button>
             </div>
           </section>
+          )}
         </form>
       </div>
     </main>

@@ -527,7 +527,7 @@ export default function AdminPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <a
-                        href={`/onboard/${s.slug}`}
+                        href={`/onboard/${s.slug}${s.status === "complete" ? "?view=admin" : ""}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline"
