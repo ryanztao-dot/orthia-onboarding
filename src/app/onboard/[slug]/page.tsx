@@ -819,11 +819,13 @@ function OnboardForm() {
                 <input type="text" value={mainProvider} onChange={e => setMainProvider(e.target.value)} placeholder="e.g., Dr. Smith" className={inputCls} />
               </Field>
 
-              {bookingScope === "new_and_existing" && (
+              {(() => {
+                const visibleTypes = bookingScope === "new_only" ? APPOINTMENT_TYPES.filter(t => t === "New Patient Consult") : APPOINTMENT_TYPES;
+                return visibleTypes.length > 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
                   <p className="mb-3 text-sm font-medium text-gray-700">Select appointment types Orthia can book:</p>
                   <div className="space-y-4">
-                    {APPOINTMENT_TYPES.map(type => (
+                    {visibleTypes.map(type => (
                       <div key={type}>
                         <label className="flex items-center gap-2 text-sm">
                           <input
@@ -835,8 +837,8 @@ function OnboardForm() {
                           <span className="font-medium">{type}</span>
                         </label>
                         {apptTypes[type]?.enabled && (
-                          <div className="ml-6 mt-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-6">
-                            <div className="sm:col-span-3">
+                          <div className="ml-6 mt-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-8">
+                            <div className="sm:col-span-4">
                               <label className="mb-1 block text-xs text-gray-500">Allowed Days</label>
                               <div className="flex flex-wrap gap-1">
                                 {DAYS.map(d => (
@@ -850,7 +852,7 @@ function OnboardForm() {
                                 ))}
                               </div>
                             </div>
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Time Range</label>
                               <div className="flex items-center gap-1">
                                 <input type="time" value={apptTypes[type].startTime} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], startTime: e.target.value } }))} className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs" />
@@ -862,11 +864,11 @@ function OnboardForm() {
                               <label className="mb-1 block text-xs text-gray-500">Duration (min)</label>
                               <input type="number" value={apptTypes[type].duration} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], duration: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" min="5" step="5" />
                             </div>
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Reschedule Window (days)</label>
                               <input type="number" value={apptTypes[type].rescheduleWindow} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], rescheduleWindow: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="e.g., 7" min="1" />
                             </div>
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Allowed Chairs</label>
                               <input type="text" value={apptTypes[type].allowedChairs} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], allowedChairs: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="Leave blank if no specific chair" />
                             </div>
@@ -886,7 +888,8 @@ function OnboardForm() {
                     </Field>
                   </div>
                 </div>
-              )}
+              );
+              })()}
 
               <Field label="Allowed Providers">
                 <textarea value={allowedProviders} onChange={e => setAllowedProviders(e.target.value)} rows={2} placeholder="List providers Orthia can schedule for..." className={textareaCls} />
