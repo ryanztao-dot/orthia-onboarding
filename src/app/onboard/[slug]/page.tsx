@@ -6,16 +6,25 @@ import type { Submission } from "@/lib/types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const APPOINTMENT_TYPES = [
+const NEW_PATIENT_TYPES = [
   "New Patient Consult",
-  "Adjustment",
-  "Bonding",
-  "Debond",
-  "Retainer Check",
-  "Invisalign/Aligner Check",
-  "Records/Imaging",
-  "Emergency",
 ];
+
+const EXISTING_PATIENT_TYPES = [
+  "Retainer Check",
+  "Aligner Scan",
+  "Change Arch Wire",
+  "Change OT",
+  "Deliver Aligners",
+  "Check Elastics",
+  "Deliver Attachments",
+  "Deliver Bands",
+  "Bonding",
+  "Debonding",
+  "Other",
+];
+
+const APPOINTMENT_TYPES = [...NEW_PATIENT_TYPES, ...EXISTING_PATIENT_TYPES];
 
 const PMS_OPTIONS = [
   "Dolphin",
@@ -210,7 +219,6 @@ function OnboardForm() {
   const [emergencyActions, setEmergencyActions] = useState<string[]>([]);
   const [wordsToAvoid, setWordsToAvoid] = useState("");
   const [wordsToUse, setWordsToUse] = useState("");
-  const [humorAllowed, setHumorAllowed] = useState<boolean | null>(null);
 
   // Lunch
   const [lunchStart, setLunchStart] = useState("12:00");
@@ -276,7 +284,7 @@ function OnboardForm() {
           mainProvider, allowedProviders, ageRestrictions, minRescheduleHours, minCancelHours,
           intakeFields, otherIntakeFields, chiefConcernRequired,
           bookWithoutInsurance, emergencyActions, wordsToAvoid, wordsToUse,
-          humorAllowed, lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
+          lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
           providerLastName, orgLegalName, voiceGender, languages, otherLanguage,
           personality, tone, commonQuestions, insuranceNotAccepted, financingOptions,
           consultationPrice, retainerProcess, bracesAlignerFaqs, missedApptPolicy,
@@ -337,7 +345,6 @@ function OnboardForm() {
       if (d.emergencyActions) setEmergencyActions(d.emergencyActions);
       if (d.wordsToAvoid) setWordsToAvoid(d.wordsToAvoid);
       if (d.wordsToUse) setWordsToUse(d.wordsToUse);
-      if (d.humorAllowed !== undefined) setHumorAllowed(d.humorAllowed);
       if (d.lunchStart) setLunchStart(d.lunchStart);
       if (d.lunchEnd) setLunchEnd(d.lunchEnd);
       if (d.wantsInsurance !== undefined) setWantsInsurance(d.wantsInsurance);
@@ -443,7 +450,6 @@ function OnboardForm() {
           if (fd.emergencyActions) setEmergencyActions(fd.emergencyActions as string[]);
           if (fd.wordsToAvoid) setWordsToAvoid(fd.wordsToAvoid as string);
           if (fd.wordsToUse) setWordsToUse(fd.wordsToUse as string);
-          if (fd.humorAllowed !== undefined) setHumorAllowed(fd.humorAllowed as boolean);
           if (fd.lunchStart) setLunchStart(fd.lunchStart as string);
           if (fd.lunchEnd) setLunchEnd(fd.lunchEnd as string);
           if (fd.wantsInsurance) setWantsInsurance(fd.wantsInsurance as boolean);
@@ -515,7 +521,7 @@ function OnboardForm() {
       mainProvider, allowedProviders, ageRestrictions, minRescheduleHours, minCancelHours,
       intakeFields, otherIntakeFields, chiefConcernRequired,
       bookWithoutInsurance, emergencyActions, wordsToAvoid, wordsToUse,
-      humorAllowed, lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
+      lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
       providerLastName, orgLegalName, voiceGender, languages, otherLanguage,
       personality, tone, commonQuestions, insuranceNotAccepted, financingOptions,
       consultationPrice, retainerProcess, bracesAlignerFaqs, missedApptPolicy,
@@ -820,7 +826,7 @@ function OnboardForm() {
               </Field>
 
               {(() => {
-                const visibleTypes = bookingScope === "new_only" ? APPOINTMENT_TYPES.filter(t => t === "New Patient Consult") : APPOINTMENT_TYPES;
+                const visibleTypes = bookingScope === "new_only" ? NEW_PATIENT_TYPES : APPOINTMENT_TYPES;
                 return visibleTypes.length > 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
                   <p className="mb-3 text-sm font-medium text-gray-700">Select appointment types Orthia can book:</p>
@@ -952,7 +958,6 @@ function OnboardForm() {
               <Field label="Words to specifically use">
                 <textarea value={wordsToUse} onChange={e => setWordsToUse(e.target.value)} rows={2} placeholder="Preferred terminology or phrases..." className={textareaCls} />
               </Field>
-              <YesNo label="Is humor allowed?" value={humorAllowed} onChange={setHumorAllowed} />
             </div>
           </section>
 
