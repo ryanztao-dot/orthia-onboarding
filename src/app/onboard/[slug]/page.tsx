@@ -11,13 +11,17 @@ const NEW_PATIENT_TYPES = [
 ];
 
 const EXISTING_PATIENT_TYPES = [
-  "Adjustment",
-  "Bonding",
-  "Debond",
   "Retainer Check",
-  "Invisalign/Aligner Check",
-  "Records/Imaging",
-  "Emergency",
+  "Aligner Scan",
+  "Change Arch Wire",
+  "Change OT",
+  "Deliver Aligners",
+  "Check Elastics",
+  "Deliver Attachments",
+  "Deliver Bands",
+  "Bonding",
+  "Debonding",
+  "Other",
 ];
 
 const APPOINTMENT_TYPES = [...NEW_PATIENT_TYPES, ...EXISTING_PATIENT_TYPES];

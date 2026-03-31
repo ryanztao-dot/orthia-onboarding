@@ -206,11 +206,11 @@ export default function AdminPage() {
     const fd = (s.form_data || {}) as Record<string, unknown>;
     const line = (label: string, value: unknown) => {
       if (value === null || value === undefined || value === "") return "";
-      return `- **${label}:** ${String(value)}\n`;
+      return `${label}: ${String(value)}\n`;
     };
     const section = (title: string, content: string) => {
       const trimmed = content.trim();
-      return trimmed ? `## ${title}\n\n${trimmed}\n\n` : "";
+      return trimmed ? `${title.toUpperCase()}\n${"=".repeat(title.length)}\n${trimmed}\n\n` : "";
     };
 
     // Format appointment types
@@ -219,7 +219,7 @@ export default function AdminPage() {
     if (apptTypes) {
       for (const [name, cfg] of Object.entries(apptTypes)) {
         if (!cfg?.enabled) continue;
-        apptSection += `#### ${name}\n`;
+        apptSection += `${name}\n`;
         if (Array.isArray(cfg.days) && cfg.days.length > 0) apptSection += `- Allowed Days: ${cfg.days.join(", ")}\n`;
         if (cfg.startTime && cfg.endTime) apptSection += `- Time Range: ${cfg.startTime} - ${cfg.endTime}\n`;
         if (cfg.duration) apptSection += `- Duration: ${cfg.duration} min\n`;
@@ -238,7 +238,8 @@ export default function AdminPage() {
     const intake = fd.intakeFields as Record<string, boolean> | undefined;
     const intakeList = intake ? Object.entries(intake).filter(([, v]) => v).map(([k]) => k).join(", ") : "";
 
-    const md = `# ${s.practice_name} — Onboarding Configuration
+    const md = `${s.practice_name} — Onboarding Configuration
+${"=".repeat((s.practice_name + " — Onboarding Configuration").length)}
 
 ${section("Practice Information",
   line("Practice Name", s.practice_name) +
@@ -276,7 +277,7 @@ ${section("Practice Information",
   line("Age Restrictions", fd.ageRestrictions) +
   line("Min Hours to Reschedule", fd.minRescheduleHours) +
   line("Min Hours to Cancel", fd.minCancelHours) +
-  (apptSection ? `### Appointment Types\n\n${apptSection}` : "") +
+  (apptSection ? `Appointment Types:\n${apptSection}` : "") +
   line("Other Appointment Type", fd.otherApptType)
 )}${section("Patient Intake",
   line("Required Intake Fields", intakeList) +
@@ -315,11 +316,11 @@ ${section("Practice Information",
   line("School Excuse Policy", fd.schoolExcusePolicy)
 )}`;
 
-    const blob = new Blob([md], { type: "text/markdown" });
+    const blob = new Blob([md], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${s.practice_name.replace(/[^a-zA-Z0-9]/g, "-").replace(/-+/g, "-")}-onboarding.md`;
+    a.download = `${s.practice_name.replace(/[^a-zA-Z0-9]/g, "-").replace(/-+/g, "-")}-onboarding.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
