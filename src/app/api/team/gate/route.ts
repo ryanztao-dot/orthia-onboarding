@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { password } = await req.json();
-  if (!safeCompare(String(password ?? ""), TEAM_GATE_PASSWORD)) {
+  const submitted = String(password ?? "").trim().toLowerCase();
+  const expected = TEAM_GATE_PASSWORD.toLowerCase();
+  if (!safeCompare(submitted, expected)) {
     return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
   }
 
