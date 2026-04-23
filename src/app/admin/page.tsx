@@ -325,6 +325,91 @@ export default function AdminPage() {
     }
   }
 
+  function handleDownloadOrg(s: Submission) {
+    const fd = (s.form_data || {}) as FormDataMap;
+    const line = (label: string, value: unknown) => {
+      if (value === null || value === undefined || value === "") return "";
+      return `${label}: ${String(value)}\n`;
+    };
+    const section = (title: string, content: string) => {
+      const trimmed = content.trim();
+      return trimmed ? `${title.toUpperCase()}\n${"=".repeat(title.length)}\n${trimmed}\n\n` : "";
+    };
+
+    const langs = fd.languages;
+    const langList = Array.isArray(langs) ? (langs as string[]).join(", ") : "";
+    const intakeList = Array.isArray(fd.intakeFields) ? (fd.intakeFields as string[]).join(", ") : "";
+    const emergencyActions = Array.isArray(fd.emergencyActions) ? (fd.emergencyActions as string[]).join(", ") : "";
+    const clinicCount = 1 + getAdditionalLocations(s).length;
+
+    const heading = `${s.practice_name} — Organization Summary`;
+    const md = `${heading}
+${"=".repeat(heading.length)}
+
+Organization: ${s.practice_name}
+Clinics in this organization: ${clinicCount}
+
+${section("Organization Information",
+  line("Practice Name", s.practice_name) +
+  line("DBA Name", s.dba_name || fd.dbaName) +
+  line("Website", s.website) +
+  line("Doctor Names", fd.doctorNames)
+)}${section("Contacts",
+  line("Form Submitter", s.contact_name) +
+  line("Submitter Role", s.contact_role) +
+  line("Submitter Email", s.email) +
+  line("Submitter Phone", s.phone) +
+  line("Primary Office Manager", fmtContact(fd.pointOfContact)) +
+  line("Billing Contact", fmtContact(fd.billingContact)) +
+  line("Emergency Contact", fmtContact(fd.emergencyContact)) +
+  line("Scheduling Contact", fmtContact(fd.schedulingContact))
+)}${section("Patient Intake",
+  line("Required Intake Fields", intakeList) +
+  line("Other Intake Fields", fd.otherIntakeFields) +
+  line("Chief Concern Required", fd.chiefConcernRequired === true ? "Yes" : fd.chiefConcernRequired === false ? "No" : "") +
+  line("Book Without Insurance", fd.bookWithoutInsurance === true ? "Yes" : fd.bookWithoutInsurance === false ? "No" : "") +
+  line("Forms Needed", fd.formsNeeded) +
+  line("Referral Requirements", fd.referralRequirements)
+)}${section("Call Handling & Voice",
+  line("Voice Gender", fd.voiceGender) +
+  line("Languages", langList) +
+  line("Other Language", fd.otherLanguage) +
+  line("Personality", fd.personality) +
+  line("Tone", fd.tone) +
+  line("Words to Avoid", fd.wordsToAvoid) +
+  line("Words to Use", fd.wordsToUse) +
+  line("Emergency Actions", emergencyActions)
+)}${section("Insurance & Billing",
+  line("Wants Insurance Verification", fd.wantsInsurance === true ? "Yes" : fd.wantsInsurance === false ? "No" : "") +
+  line("NPI", fd.npi) +
+  line("Provider First Name", fd.providerFirstName) +
+  line("Provider Last Name", fd.providerLastName) +
+  line("Organization Legal Name", fd.orgLegalName) +
+  line("Insurance Not Accepted", fd.insuranceNotAccepted) +
+  line("Financing Options", fd.financingOptions) +
+  line("Consultation Price", fd.consultationPrice) +
+  line("Payment Methods", fd.paymentMethods)
+)}${section("FAQs & Policies",
+  line("Common Questions", fd.commonQuestions) +
+  line("Retainer Process", fd.retainerProcess) +
+  line("Braces/Aligner FAQs", fd.bracesAlignerFaqs) +
+  line("Adult/Child FAQs", fd.adultChildFaqs) +
+  line("Missed Appointment Policy", fd.missedApptPolicy) +
+  line("Cancellation Policy", fd.cancellationPolicy) +
+  line("Late Arrival Policy", fd.lateArrivalPolicy) +
+  line("School Excuse Policy", fd.schoolExcusePolicy)
+)}`;
+
+    const safeName = heading.replace(/[^a-zA-Z0-9]/g, "-").replace(/-+/g, "-");
+    const blob = new Blob([md], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeName}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handleDownload(s: Submission, clinicIndex: number = 0) {
     const fd = (s.form_data || {}) as FormDataMap;
 
@@ -779,13 +864,21 @@ ${section("Clinic Information",
                             >
                               Copy
                             </button>
+                            <button
+                              onClick={() => handleDownloadOrg(s)}
+                              className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                              title="Download organization-level settings only"
+                            >
+                              Org info
+                            </button>
                           </>
                         )}
                         <button
                           onClick={() => handleDownload(s, r.clinicIndex)}
                           className="text-green-600 hover:text-green-800 hover:underline"
+                          title={isMain ? "Download main clinic + organization info" : "Download this clinic's settings + organization info"}
                         >
-                          Download
+                          {isMain ? "Clinic + Org" : "Clinic"}
                         </button>
                         {isFirstOfOrg && (
                           <button

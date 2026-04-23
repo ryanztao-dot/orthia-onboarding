@@ -685,11 +685,16 @@ function OnboardForm() {
   const [multiLocation, setMultiLocation] = useState(false);
   const [additionalLocationsList, setAdditionalLocationsList] = useState<AdditionalLocation[]>([]);
 
-  // Wizard step state. "intro" is the first screen that asks for org name and
-  // how many locations. Each clinic step renders a single clinic's form.
-  const [step, setStep] = useState<{ kind: "intro" } | { kind: "clinic"; index: number }>({ kind: "intro" });
+  // Wizard step state. "intro" collects org name + number of clinics. "org"
+  // collects everything that applies across the organization. Each "clinic"
+  // step collects settings for one location. Step progression is:
+  // intro -> org -> clinic 0 -> clinic 1 -> ... -> clinic N-1 (+ Terms).
+  type Step = { kind: "intro" } | { kind: "org" } | { kind: "clinic"; index: number };
+  const [step, setStep] = useState<Step>({ kind: "intro" });
   const [numLocationsInput, setNumLocationsInput] = useState(1);
   const totalClinics = Math.max(1, additionalLocationsList.length + 1);
+  const wizardTotal = 1 + totalClinics; // 1 org step + N clinic steps
+  const wizardIndex = step.kind === "intro" ? -1 : step.kind === "org" ? 0 : 1 + step.index;
   const isLastClinicStep = step.kind === "clinic" && step.index === additionalLocationsList.length;
   const currentLocation = step.kind === "clinic" && step.index > 0 ? additionalLocationsList[step.index - 1] : null;
   const [parkingNotes, setParkingNotes] = useState("");
@@ -950,11 +955,11 @@ function OnboardForm() {
           if (editTokenFromUrl && editTokenFromUrl === s.edit_token) {
             setEditing(true);
             // Editing an existing submission skips the intro screen.
-            setStep({ kind: "clinic", index: 0 });
+            setStep({ kind: "org" });
           }
         }
         // Admin view of a completed submission also skips the intro.
-        if (isAdminView) setStep({ kind: "clinic", index: 0 });
+        if (isAdminView) setStep({ kind: "org" });
         // Load pre-filled fields
         setPracticeName(s.practice_name || "");
         setPmsName(s.pms || "");
@@ -1255,23 +1260,24 @@ function OnboardForm() {
         </div>
       </div>
 
-      {/* Sticky Progress Bar — clinic-aware */}
-      {step.kind === "clinic" && (
+      {/* Sticky Progress Bar — wizard-aware (org + clinics) */}
+      {step.kind !== "intro" && (
         <div className="sticky top-0 z-20 border-b bg-white shadow-sm">
           <div className="mx-auto max-w-3xl px-6 py-2.5">
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-xs font-semibold text-gray-700">
-                Clinic {step.index + 1} of {totalClinics}
-                {step.index === 0 ? " — Main location & organization info" : currentLocation?.label ? ` — ${currentLocation.label}` : ""}
+                {step.kind === "org"
+                  ? "Organization setup"
+                  : `Clinic ${step.index + 1} of ${totalClinics}${step.index === 0 ? " — Main location" : currentLocation?.label ? ` — ${currentLocation.label}` : ""}`}
               </p>
               <div className="flex gap-1">
-                {Array.from({ length: totalClinics }, (_, i) => (
+                {Array.from({ length: wizardTotal }, (_, i) => (
                   <div
                     key={i}
                     className={`h-2 rounded-full transition-all ${
-                      i === step.index
+                      i === wizardIndex
                         ? "w-6 bg-blue-600"
-                        : i < step.index
+                        : i < wizardIndex
                           ? "w-2 bg-blue-400"
                           : "w-2 bg-gray-200"
                     }`}
@@ -1282,7 +1288,7 @@ function OnboardForm() {
             <div className="h-1 w-full rounded-full bg-gray-100">
               <div
                 className="h-1 rounded-full bg-blue-600 transition-all duration-300"
-                style={{ width: `${Math.round(((step.index + 1) / totalClinics) * 100)}%` }}
+                style={{ width: `${Math.round(((wizardIndex + 1) / wizardTotal) * 100)}%` }}
               />
             </div>
           </div>
@@ -1355,7 +1361,7 @@ function OnboardForm() {
                         return next;
                       });
                       setMultiLocation(target > 0);
-                      setStep({ kind: "clinic", index: 0 });
+                      setStep({ kind: "org" });
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1368,22 +1374,26 @@ function OnboardForm() {
           </div>
         )}
 
-        {step.kind === "clinic" && (
+        {step.kind !== "intro" && (
         <>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {step.index === 0
-              ? (totalClinics > 1 ? `Clinic 1 of ${totalClinics} — Main location` : "Practice Onboarding")
-              : `Clinic ${step.index + 1} of ${totalClinics}${currentLocation?.label ? ` — ${currentLocation.label}` : ""}`}
+            {step.kind === "org"
+              ? "Organization setup"
+              : step.index === 0
+                ? (totalClinics > 1 ? `Clinic 1 of ${totalClinics} — Main location` : "Your practice")
+                : `Clinic ${step.index + 1} of ${totalClinics}${currentLocation?.label ? ` — ${currentLocation.label}` : ""}`}
           </h1>
           <p className="mt-1 text-gray-500">
-            {step.index === 0
-              ? "This first section covers your organization-wide settings and your main location."
-              : "Fill in the settings that apply at this location. Blanks default to your main location."}
+            {step.kind === "org"
+              ? "First, a few questions that apply across your whole organization. Then we'll walk through each clinic."
+              : step.index === 0
+                ? "Now the details for your main location — address, hours, appointment types, and PMS."
+                : "Fill in the settings that apply at this location. Blanks default to your main location."}
           </p>
         </div>
 
-        {step.index === 0 && (
+        {step.kind === "org" && (
           <div className="mb-8 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
             <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1394,7 +1404,7 @@ function OnboardForm() {
           </div>
         )}
 
-        {step.index > 0 && (
+        {step.kind === "clinic" && step.index > 0 && (
           <div className="mb-6 flex items-center justify-between">
             <button
               type="button"
@@ -1410,11 +1420,11 @@ function OnboardForm() {
 
         <form ref={formRef} onSubmit={handleSubmit} className={`space-y-10 ${isAdminView && submitted ? "pointer-events-none opacity-75" : ""}`}>
 
-          {step.index === 0 && (
+          {step.kind === "org" && (
           <>
-          {/* Section 1: Basic Practice Information */}
+          {/* Section 1 (org): Organization Information */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
-            <SectionHeader number={1} title="Basic Practice Information" />
+            <SectionHeader number={1} title="Organization Information" />
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Practice Name" required>
@@ -1424,39 +1434,9 @@ function OnboardForm() {
                   <input type="text" value={dbaName} onChange={e => setDbaName(e.target.value)} placeholder="Leave blank if same" className={inputCls} />
                 </Field>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Main Office Phone">
-                  <input type="tel" value={officePhone} onChange={e => setOfficePhone(e.target.value)} placeholder="(555) 123-4567" className={inputCls} />
-                </Field>
-                <Field label="Main Office Email">
-                  <input type="email" value={officeEmail} onChange={e => setOfficeEmail(e.target.value)} placeholder="office@practice.com" className={inputCls} />
-                </Field>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Website URL">
-                  <input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://..." className={inputCls} />
-                </Field>
-                <Field label="Time Zone">
-                  <select value={timezone} onChange={e => setTimezone(e.target.value)} className={inputCls}>
-                    <option value="">Select...</option>
-                    {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-                  </select>
-                </Field>
-              </div>
-              <Field label="Practice Address">
-                <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State ZIP" className={inputCls} />
+              <Field label="Website URL">
+                <input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://..." className={inputCls} />
               </Field>
-
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Parking Notes">
-                  <input type="text" value={parkingNotes} onChange={e => setParkingNotes(e.target.value)} placeholder="Free lot behind building..." className={inputCls} />
-                </Field>
-                <Field label="Building Access / Suite / Floor">
-                  <input type="text" value={buildingAccess} onChange={e => setBuildingAccess(e.target.value)} placeholder="Suite 200, 2nd floor..." className={inputCls} />
-                </Field>
-              </div>
-
               <Field label="Doctor Names">
                 <textarea value={doctorNames} onChange={e => setDoctorNames(e.target.value)} rows={2} placeholder="Dr. Smith, Dr. Jones..." className={textareaCls} />
               </Field>
@@ -1484,14 +1464,46 @@ function OnboardForm() {
                 value={schedulingContact}
                 onChange={setSchedulingContact}
               />
+            </div>
+          </section>
+          </>
+          )}
 
-              {/* Clinic Hours */}
+          {step.kind === "clinic" && step.index === 0 && (
+          <>
+          {/* Main Location Details (clinic-scoped half of old Section 1) */}
+          <section className="rounded-xl border bg-white p-6 shadow-sm">
+            <SectionHeader number={1} title="Main Location Details" />
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Main Office Phone">
+                  <input type="tel" value={officePhone} onChange={e => setOfficePhone(e.target.value)} placeholder="(555) 123-4567" className={inputCls} />
+                </Field>
+                <Field label="Main Office Email">
+                  <input type="email" value={officeEmail} onChange={e => setOfficeEmail(e.target.value)} placeholder="office@practice.com" className={inputCls} />
+                </Field>
+              </div>
+              <Field label="Time Zone">
+                <select value={timezone} onChange={e => setTimezone(e.target.value)} className={inputCls}>
+                  <option value="">Select...</option>
+                  {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+              </Field>
+              <Field label="Practice Address">
+                <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State ZIP" className={inputCls} />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Parking Notes">
+                  <input type="text" value={parkingNotes} onChange={e => setParkingNotes(e.target.value)} placeholder="Free lot behind building..." className={inputCls} />
+                </Field>
+                <Field label="Building Access / Suite / Floor">
+                  <input type="text" value={buildingAccess} onChange={e => setBuildingAccess(e.target.value)} placeholder="Suite 200, 2nd floor..." className={inputCls} />
+                </Field>
+              </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">Clinic Hours</label>
                 <ClinicHoursEditor value={clinicHours} onChange={setClinicHours} />
               </div>
-
-              {/* Upcoming closures and adjusted hours */}
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label className="block text-sm font-medium text-gray-700">Upcoming closures and adjusted hours</label>
@@ -1520,7 +1532,11 @@ function OnboardForm() {
               }}
             />
           </section>
+          </>
+          )}
 
+          {step.kind === "org" && (
+          <>
           {/* Section 3: Intake Rules */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={3} title="Intake Rules" />
@@ -1567,13 +1583,21 @@ function OnboardForm() {
               </Field>
             </div>
           </section>
+          </>
+          )}
 
+          {step.kind === "clinic" && step.index === 0 && (
+          <>
           {/* Section 5: Lunch Hours */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={5} title="Lunch Hours" />
             <LunchHoursEditor value={lunchHours} onChange={setLunchHours} />
           </section>
+          </>
+          )}
 
+          {step.kind === "org" && (
+          <>
           {/* Section 6: Insurance Verification */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={6} title="Insurance Verification Add-On" />
@@ -1702,7 +1726,11 @@ function OnboardForm() {
               </Field>
             </div>
           </section>
+          </>
+          )}
 
+          {step.kind === "clinic" && step.index === 0 && (
+          <>
           {/* Section 9: PMS Details */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={9} title="Practice Management Software" />
@@ -1711,7 +1739,11 @@ function OnboardForm() {
               onChange={(v) => { setPmsName(v.pmsName); setPmsVersion(v.pmsVersion); }}
             />
           </section>
+          </>
+          )}
 
+          {step.kind === "org" && (
+          <>
           {/* Section 10: Contact Information */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={10} title="Your Contact Information" />
@@ -1826,10 +1858,18 @@ function OnboardForm() {
             );
           })()}
 
-          {/* Save & Continue (non-last clinic step) */}
+          {/* Save & Continue (non-last wizard step) */}
           {!isLastClinicStep && !(isAdminView && submitted) && (
             <div className="flex items-center justify-between gap-3">
-              {step.kind === "clinic" && step.index > 0 ? (
+              {step.kind === "org" ? (
+                <button
+                  type="button"
+                  onClick={() => { setStep({ kind: "intro" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Back
+                </button>
+              ) : step.kind === "clinic" && step.index > 0 ? (
                 <button
                   type="button"
                   onClick={() => { setStep({ kind: "clinic", index: step.index - 1 }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
@@ -1837,17 +1877,30 @@ function OnboardForm() {
                 >
                   Back
                 </button>
+              ) : step.kind === "clinic" && step.index === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => { setStep({ kind: "org" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Back to organization info
+                </button>
               ) : <span />}
               <button
                 type="button"
                 onClick={() => {
-                  if (step.kind !== "clinic") return;
-                  setStep({ kind: "clinic", index: step.index + 1 });
+                  if (step.kind === "org") {
+                    setStep({ kind: "clinic", index: 0 });
+                  } else if (step.kind === "clinic") {
+                    setStep({ kind: "clinic", index: step.index + 1 });
+                  }
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
               >
-                Save &amp; continue to next clinic
+                {step.kind === "org"
+                  ? (totalClinics > 1 ? "Save & continue to Clinic 1" : "Save & continue to your clinic")
+                  : "Save & continue to next clinic"}
               </button>
             </div>
           )}
@@ -1891,6 +1944,14 @@ function OnboardForm() {
                     className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Back
+                  </button>
+                ) : step.kind === "clinic" && step.index === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => { setStep({ kind: "org" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Back to organization info
                   </button>
                 ) : <span />}
                 <button
