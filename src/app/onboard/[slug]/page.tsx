@@ -684,6 +684,14 @@ function OnboardForm() {
   const [address, setAddress] = useState("");
   const [multiLocation, setMultiLocation] = useState(false);
   const [additionalLocationsList, setAdditionalLocationsList] = useState<AdditionalLocation[]>([]);
+
+  // Wizard step state. "intro" is the first screen that asks for org name and
+  // how many locations. Each clinic step renders a single clinic's form.
+  const [step, setStep] = useState<{ kind: "intro" } | { kind: "clinic"; index: number }>({ kind: "intro" });
+  const [numLocationsInput, setNumLocationsInput] = useState(1);
+  const totalClinics = Math.max(1, additionalLocationsList.length + 1);
+  const isLastClinicStep = step.kind === "clinic" && step.index === additionalLocationsList.length;
+  const currentLocation = step.kind === "clinic" && step.index > 0 ? additionalLocationsList[step.index - 1] : null;
   const [parkingNotes, setParkingNotes] = useState("");
   const [buildingAccess, setBuildingAccess] = useState("");
   const [timezone, setTimezone] = useState("");
@@ -941,8 +949,12 @@ function OnboardForm() {
           // If valid edit token in URL, auto-enter edit mode
           if (editTokenFromUrl && editTokenFromUrl === s.edit_token) {
             setEditing(true);
+            // Editing an existing submission skips the intro screen.
+            setStep({ kind: "clinic", index: 0 });
           }
         }
+        // Admin view of a completed submission also skips the intro.
+        if (isAdminView) setStep({ kind: "clinic", index: 0 });
         // Load pre-filled fields
         setPracticeName(s.practice_name || "");
         setPmsName(s.pms || "");
@@ -1057,6 +1069,14 @@ function OnboardForm() {
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  // Once data has loaded, seed the intro's location count to match what's
+  // already on the record so returning users see the right default.
+  useEffect(() => {
+    if (loading) return;
+    setNumLocationsInput(Math.max(1, additionalLocationsList.length + 1));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // Track which section is visible for progress indicator
   useEffect(() => {
@@ -1235,36 +1255,39 @@ function OnboardForm() {
         </div>
       </div>
 
-      {/* Sticky Progress Bar */}
-      <div className="sticky top-0 z-20 border-b bg-white shadow-sm">
-        <div className="mx-auto max-w-3xl px-6 py-2.5">
-          <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-semibold text-gray-700">Section {activeSection} of 11</p>
-            <div className="flex gap-1">
-              {Array.from({ length: 11 }, (_, i) => (
-                <button
-                  key={i}
-                  onClick={() => document.getElementById(`section-${i + 1}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  className={`h-2 rounded-full transition-all ${
-                    i + 1 === activeSection
-                      ? "w-6 bg-blue-600"
-                      : i + 1 < activeSection
-                        ? "w-2 bg-blue-400"
-                        : "w-2 bg-gray-200"
-                  }`}
-                  aria-label={`Go to section ${i + 1}`}
-                />
-              ))}
+      {/* Sticky Progress Bar — clinic-aware */}
+      {step.kind === "clinic" && (
+        <div className="sticky top-0 z-20 border-b bg-white shadow-sm">
+          <div className="mx-auto max-w-3xl px-6 py-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs font-semibold text-gray-700">
+                Clinic {step.index + 1} of {totalClinics}
+                {step.index === 0 ? " — Main location & organization info" : currentLocation?.label ? ` — ${currentLocation.label}` : ""}
+              </p>
+              <div className="flex gap-1">
+                {Array.from({ length: totalClinics }, (_, i) => (
+                  <div
+                    key={i}
+                    className={`h-2 rounded-full transition-all ${
+                      i === step.index
+                        ? "w-6 bg-blue-600"
+                        : i < step.index
+                          ? "w-2 bg-blue-400"
+                          : "w-2 bg-gray-200"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="h-1 w-full rounded-full bg-gray-100">
+              <div
+                className="h-1 rounded-full bg-blue-600 transition-all duration-300"
+                style={{ width: `${Math.round(((step.index + 1) / totalClinics) * 100)}%` }}
+              />
             </div>
           </div>
-          <div className="h-1 w-full rounded-full bg-gray-100">
-            <div
-              className="h-1 rounded-full bg-blue-600 transition-all duration-300"
-              style={{ width: `${Math.round((activeSection / 11) * 100)}%` }}
-            />
-          </div>
         </div>
-      </div>
+      )}
 
       <div className="mx-auto max-w-3xl px-6 pt-8">
         {isAdminView && submitted && (
@@ -1277,22 +1300,118 @@ function OnboardForm() {
             <p className="text-sm text-blue-800 font-medium">You are editing a previously submitted form. Changes will update your submission.</p>
           </div>
         )}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Practice Onboarding</h1>
-          <p className="mt-1 text-gray-500">Please complete all sections below. Pre-filled information can be edited.</p>
-        </div>
 
-        <div className="mb-8 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-sm text-blue-900">
-            Everything you enter here can be adjusted during your onboarding call or any time after. Nothing is final. We just want a starting point so we can hit the ground running with your practice.
+        {/* Intro screen: ask org name + how many locations */}
+        {step.kind === "intro" && !(isAdminView && submitted) && (
+          <div className="mt-4">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">Let&rsquo;s get started</h1>
+              <p className="mt-1 text-gray-500">A couple of quick questions before we dive into the full form.</p>
+            </div>
+            <div className="mb-8 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-blue-900">
+                Everything you enter here can be adjusted during your onboarding call or any time after. Nothing is final. We just want a starting point so we can hit the ground running with your practice.
+              </p>
+            </div>
+            <section className="rounded-xl border bg-white p-6 shadow-sm">
+              <div className="space-y-5">
+                <Field label="How many locations are you onboarding?" required>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={numLocationsInput}
+                    onChange={e => setNumLocationsInput(Math.max(1, Math.min(20, parseInt(e.target.value || "1", 10) || 1)))}
+                    className={inputCls}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">You can add more later on the onboarding call if needed.</p>
+                </Field>
+                <Field label="Organization Name" required>
+                  <input
+                    type="text"
+                    value={practiceName}
+                    onChange={e => setPracticeName(e.target.value)}
+                    placeholder="e.g., Smile Orthodontics"
+                    className={inputCls}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">The parent organization. Each clinic gets its own form next.</p>
+                </Field>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    disabled={!practiceName.trim() || numLocationsInput < 1}
+                    onClick={() => {
+                      const target = Math.max(0, numLocationsInput - 1);
+                      setAdditionalLocationsList(prev => {
+                        if (prev.length === target) return prev;
+                        if (prev.length > target) return prev.slice(0, target);
+                        const next = [...prev];
+                        while (next.length < target) next.push(emptyLocation());
+                        return next;
+                      });
+                      setMultiLocation(target > 0);
+                      setStep({ kind: "clinic", index: 0 });
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {step.kind === "clinic" && (
+        <>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {step.index === 0
+              ? (totalClinics > 1 ? `Clinic 1 of ${totalClinics} — Main location` : "Practice Onboarding")
+              : `Clinic ${step.index + 1} of ${totalClinics}${currentLocation?.label ? ` — ${currentLocation.label}` : ""}`}
+          </h1>
+          <p className="mt-1 text-gray-500">
+            {step.index === 0
+              ? "This first section covers your organization-wide settings and your main location."
+              : "Fill in the settings that apply at this location. Blanks default to your main location."}
           </p>
         </div>
 
+        {step.index === 0 && (
+          <div className="mb-8 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-blue-900">
+              Everything you enter here can be adjusted during your onboarding call or any time after. Nothing is final. We just want a starting point so we can hit the ground running with your practice.
+            </p>
+          </div>
+        )}
+
+        {step.index > 0 && (
+          <div className="mb-6 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => { setStep({ kind: "clinic", index: step.index - 1 }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              Back to previous clinic
+            </button>
+            <p className="text-xs text-gray-400">Clinic {step.index + 1} of {totalClinics}</p>
+          </div>
+        )}
+
         <form ref={formRef} onSubmit={handleSubmit} className={`space-y-10 ${isAdminView && submitted ? "pointer-events-none opacity-75" : ""}`}>
 
+          {step.index === 0 && (
+          <>
           {/* Section 1: Basic Practice Information */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={1} title="Basic Practice Information" />
@@ -1328,139 +1447,6 @@ function OnboardForm() {
                 <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State ZIP" className={inputCls} />
               </Field>
 
-              <Toggle label="Multiple Locations" checked={multiLocation} onChange={setMultiLocation} description="Do you have more than one office location?" />
-              {multiLocation && (
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="block text-sm font-medium text-gray-700">Additional Locations</label>
-                    <span className="text-xs text-gray-400">Fully independent settings per clinic</span>
-                  </div>
-                  <p className="mb-2 text-xs text-gray-500">
-                    Each clinic is part of one organization but has its own hours, closures, lunch, scheduling rules, appointment types, and PMS. Fill in what applies at each location &mdash; we&rsquo;ll reconcile anything missing during the onboarding call.
-                  </p>
-                  <div className="space-y-4 rounded-lg border p-4">
-                    {additionalLocationsList.length === 0 && (
-                      <p className="text-sm text-gray-400">No additional locations added yet.</p>
-                    )}
-                    {additionalLocationsList.map((loc, idx) => {
-                      const patchLoc = (p: Partial<AdditionalLocation>) =>
-                        setAdditionalLocationsList(prev => prev.map(x => x.id === loc.id ? { ...x, ...p } : x));
-                      return (
-                        <div key={loc.id} className="space-y-4 rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-                          <div className="flex items-center justify-between border-b pb-2">
-                            <p className="text-base font-semibold text-gray-900">
-                              Location {idx + 2}{loc.label ? <span className="ml-2 font-normal text-gray-500">&mdash; {loc.label}</span> : null}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setAdditionalLocationsList(prev => prev.filter(x => x.id !== loc.id))}
-                              className="text-xs font-medium text-red-500 hover:text-red-700"
-                            >
-                              Remove this location
-                            </button>
-                          </div>
-
-                          {/* Location info */}
-                          <div className="space-y-3">
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <Field label="Location Label">
-                                <input type="text" value={loc.label} onChange={e => patchLoc({ label: e.target.value })} placeholder="e.g., North clinic" className={inputCls} />
-                              </Field>
-                              <Field label="Address" required>
-                                <input type="text" value={loc.address} onChange={e => patchLoc({ address: e.target.value })} placeholder="123 Main St, City, State ZIP" className={inputCls} required />
-                              </Field>
-                              <Field label="Office Phone">
-                                <input type="tel" value={loc.phone} onChange={e => patchLoc({ phone: e.target.value })} placeholder="(555) 123-4567" className={inputCls} />
-                              </Field>
-                              <Field label="Office Email">
-                                <input type="email" value={loc.email} onChange={e => patchLoc({ email: e.target.value })} placeholder="location@practice.com" className={inputCls} />
-                              </Field>
-                              <Field label="Time Zone">
-                                <select value={loc.timezone} onChange={e => patchLoc({ timezone: e.target.value })} className={inputCls}>
-                                  <option value="">Same as main location</option>
-                                  {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-                                </select>
-                              </Field>
-                              <Field label="Parking Notes">
-                                <input type="text" value={loc.parkingNotes} onChange={e => patchLoc({ parkingNotes: e.target.value })} placeholder="Free lot behind building..." className={inputCls} />
-                              </Field>
-                              <Field label="Building Access / Suite / Floor">
-                                <input type="text" value={loc.buildingAccess} onChange={e => patchLoc({ buildingAccess: e.target.value })} placeholder="Suite 200, 2nd floor..." className={inputCls} />
-                              </Field>
-                            </div>
-                          </div>
-
-                          {/* Clinic hours */}
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">Clinic Hours</label>
-                            <ClinicHoursEditor value={loc.clinicHours} onChange={v => patchLoc({ clinicHours: v })} />
-                          </div>
-
-                          {/* Upcoming closures */}
-                          <div>
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                              <label className="block text-sm font-medium text-gray-700">Upcoming closures and adjusted hours</label>
-                              <span className="text-xs text-gray-400">Optional</span>
-                            </div>
-                            <ClosuresEditor value={loc.upcomingClosures} onChange={v => patchLoc({ upcomingClosures: v })} />
-                          </div>
-
-                          {/* Lunch hours */}
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">Lunch Hours</label>
-                            <LunchHoursEditor value={loc.lunchHours} onChange={v => patchLoc({ lunchHours: v })} />
-                          </div>
-
-                          {/* Scheduling */}
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">Availability &amp; Scheduling Rules</label>
-                            <SchedulingSettingsEditor
-                              value={{
-                                bookingScope: loc.bookingScope,
-                                mainProvider: loc.mainProvider,
-                                allowedProviders: loc.allowedProviders,
-                                ageRestrictions: loc.ageRestrictions,
-                                apptTypes: loc.apptTypes,
-                                otherApptType: loc.otherApptType,
-                              }}
-                              onChange={v => patchLoc({
-                                bookingScope: v.bookingScope,
-                                mainProvider: v.mainProvider,
-                                allowedProviders: v.allowedProviders,
-                                ageRestrictions: v.ageRestrictions,
-                                apptTypes: v.apptTypes,
-                                otherApptType: v.otherApptType,
-                              })}
-                            />
-                          </div>
-
-                          {/* PMS */}
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">Practice Management Software</label>
-                            <PmsEditor
-                              value={{ pmsName: loc.pmsName, pmsVersion: loc.pmsVersion }}
-                              onChange={v => patchLoc({ pmsName: v.pmsName, pmsVersion: v.pmsVersion })}
-                            />
-                          </div>
-
-                          {/* Freeform notes */}
-                          <Field label="Anything else specific to this location?">
-                            <textarea value={loc.notes} onChange={e => patchLoc({ notes: e.target.value })} rows={2} placeholder="Anything not covered above" className={textareaCls} />
-                          </Field>
-                        </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setAdditionalLocationsList(prev => [...prev, emptyLocation()])}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-blue-300 bg-blue-50/50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      Add another location
-                    </button>
-                  </div>
-                </div>
-              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Parking Notes">
@@ -1748,9 +1734,126 @@ function OnboardForm() {
               </div>
             </div>
           </section>
+          </>
+          )}
 
-          {/* Legal & Submit */}
-          {!(isAdminView && submitted) && (
+          {/* Per-clinic step: editing a single additional location */}
+          {step.kind === "clinic" && step.index > 0 && currentLocation && (() => {
+            const loc = currentLocation;
+            const patchLoc = (p: Partial<AdditionalLocation>) =>
+              setAdditionalLocationsList(prev => prev.map(x => x.id === loc.id ? { ...x, ...p } : x));
+            return (
+              <section className="space-y-6 rounded-xl border bg-white p-6 shadow-sm">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Location Label">
+                    <input type="text" value={loc.label} onChange={e => patchLoc({ label: e.target.value })} placeholder="e.g., North clinic" className={inputCls} />
+                  </Field>
+                  <Field label="Address" required>
+                    <input type="text" value={loc.address} onChange={e => patchLoc({ address: e.target.value })} placeholder="123 Main St, City, State ZIP" className={inputCls} required />
+                  </Field>
+                  <Field label="Office Phone">
+                    <input type="tel" value={loc.phone} onChange={e => patchLoc({ phone: e.target.value })} placeholder="(555) 123-4567" className={inputCls} />
+                  </Field>
+                  <Field label="Office Email">
+                    <input type="email" value={loc.email} onChange={e => patchLoc({ email: e.target.value })} placeholder="location@practice.com" className={inputCls} />
+                  </Field>
+                  <Field label="Time Zone">
+                    <select value={loc.timezone} onChange={e => patchLoc({ timezone: e.target.value })} className={inputCls}>
+                      <option value="">Same as main location</option>
+                      {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Parking Notes">
+                    <input type="text" value={loc.parkingNotes} onChange={e => patchLoc({ parkingNotes: e.target.value })} placeholder="Free lot behind building..." className={inputCls} />
+                  </Field>
+                  <Field label="Building Access / Suite / Floor">
+                    <input type="text" value={loc.buildingAccess} onChange={e => patchLoc({ buildingAccess: e.target.value })} placeholder="Suite 200, 2nd floor..." className={inputCls} />
+                  </Field>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">Clinic Hours</label>
+                  <ClinicHoursEditor value={loc.clinicHours} onChange={v => patchLoc({ clinicHours: v })} />
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-sm font-medium text-gray-700">Upcoming closures and adjusted hours</label>
+                    <span className="text-xs text-gray-400">Optional</span>
+                  </div>
+                  <ClosuresEditor value={loc.upcomingClosures} onChange={v => patchLoc({ upcomingClosures: v })} />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">Lunch Hours</label>
+                  <LunchHoursEditor value={loc.lunchHours} onChange={v => patchLoc({ lunchHours: v })} />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">Availability &amp; Scheduling Rules</label>
+                  <SchedulingSettingsEditor
+                    value={{
+                      bookingScope: loc.bookingScope,
+                      mainProvider: loc.mainProvider,
+                      allowedProviders: loc.allowedProviders,
+                      ageRestrictions: loc.ageRestrictions,
+                      apptTypes: loc.apptTypes,
+                      otherApptType: loc.otherApptType,
+                    }}
+                    onChange={v => patchLoc({
+                      bookingScope: v.bookingScope,
+                      mainProvider: v.mainProvider,
+                      allowedProviders: v.allowedProviders,
+                      ageRestrictions: v.ageRestrictions,
+                      apptTypes: v.apptTypes,
+                      otherApptType: v.otherApptType,
+                    })}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">Practice Management Software</label>
+                  <PmsEditor
+                    value={{ pmsName: loc.pmsName, pmsVersion: loc.pmsVersion }}
+                    onChange={v => patchLoc({ pmsName: v.pmsName, pmsVersion: v.pmsVersion })}
+                  />
+                </div>
+
+                <Field label="Anything else specific to this location?">
+                  <textarea value={loc.notes} onChange={e => patchLoc({ notes: e.target.value })} rows={2} placeholder="Anything not covered above" className={textareaCls} />
+                </Field>
+              </section>
+            );
+          })()}
+
+          {/* Save & Continue (non-last clinic step) */}
+          {!isLastClinicStep && !(isAdminView && submitted) && (
+            <div className="flex items-center justify-between gap-3">
+              {step.kind === "clinic" && step.index > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => { setStep({ kind: "clinic", index: step.index - 1 }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Back
+                </button>
+              ) : <span />}
+              <button
+                type="button"
+                onClick={() => {
+                  if (step.kind !== "clinic") return;
+                  setStep({ kind: "clinic", index: step.index + 1 });
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Save &amp; continue to next clinic
+              </button>
+            </div>
+          )}
+
+          {/* Terms + Submit (last clinic step) */}
+          {isLastClinicStep && !(isAdminView && submitted) && (
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={11} title="Terms & Agreement" />
             <div className="space-y-4">
@@ -1780,17 +1883,30 @@ function OnboardForm() {
 
               {submitError && <p className="text-sm text-red-600">{submitError}</p>}
 
-              <button
-                type="submit"
-                disabled={submitting || !acceptedTerms || !confirmedAccuracy}
-                className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? "Submitting..." : editing ? "Update Submission" : "Submit Onboarding Form"}
-              </button>
+              <div className="flex items-center justify-between gap-3 pt-2">
+                {step.kind === "clinic" && step.index > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => { setStep({ kind: "clinic", index: step.index - 1 }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Back
+                  </button>
+                ) : <span />}
+                <button
+                  type="submit"
+                  disabled={submitting || !acceptedTerms || !confirmedAccuracy}
+                  className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting ? "Submitting..." : editing ? "Update Submission" : "Submit Onboarding Form"}
+                </button>
+              </div>
             </div>
           </section>
           )}
         </form>
+        </>
+        )}
       </div>
     </main>
   );
