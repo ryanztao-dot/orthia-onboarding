@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import type { Submission } from "@/lib/types";
+import { SUPPORT_PHONE } from "@/lib/site-config";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -67,6 +68,25 @@ interface ClinicHours {
   [day: string]: { open: string; close: string; closed: boolean };
 }
 
+interface ContactInfo {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+interface Closure {
+  id: string;
+  date: string;
+  mode: "closed" | "adjusted";
+  startTime: string;
+  endTime: string;
+  label: string;
+}
+
+interface LunchConfig {
+  [day: string]: { start: string; end: string; noLunch: boolean };
+}
+
 interface ApptTypeConfig {
   enabled: boolean;
   days: string[];
@@ -76,6 +96,50 @@ interface ApptTypeConfig {
   rescheduleWindow: string;
   allowedChairs: string;
   urgentIfUnavailable: boolean | null;
+  cancellationWindowHours: string;
+  bookBeforeWindow: string;
+  bookBeforeUnit: "hours" | "days";
+  doubleBookingAllowed: boolean | null;
+}
+
+function emptyContact(): ContactInfo {
+  return { name: "", email: "", phone: "" };
+}
+
+// Accepts either the legacy string shape or the new object shape and returns a ContactInfo.
+function coerceContact(val: unknown): ContactInfo {
+  if (!val) return emptyContact();
+  if (typeof val === "string") return { name: val, email: "", phone: "" };
+  if (typeof val === "object") {
+    const o = val as Record<string, unknown>;
+    return {
+      name: typeof o.name === "string" ? o.name : "",
+      email: typeof o.email === "string" ? o.email : "",
+      phone: typeof o.phone === "string" ? o.phone : "",
+    };
+  }
+  return emptyContact();
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function plusDaysISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function defaultLunchHours(): LunchConfig {
+  const h: LunchConfig = {};
+  DAYS.forEach(d => { h[d] = { start: "12:00", end: "13:00", noLunch: false }; });
+  return h;
+}
+
+function newClosureId(): string {
+  return `c_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function SectionHeader({ number, title }: { number: number; title: string }) {
@@ -137,6 +201,61 @@ function Field({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
 const textareaCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
 
+function ContactBlock({
+  label,
+  value,
+  onChange,
+  nameRequired,
+  emailRequired,
+  phoneRequired,
+}: {
+  label: string;
+  value: ContactInfo;
+  onChange: (v: ContactInfo) => void;
+  nameRequired?: boolean;
+  emailRequired?: boolean;
+  phoneRequired?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-gray-50/40 p-3">
+      <p className="mb-2 text-sm font-medium text-gray-700">
+        {label}{nameRequired && <span className="text-red-500"> *</span>}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Name" required={nameRequired}>
+          <input
+            type="text"
+            value={value.name}
+            onChange={e => onChange({ ...value, name: e.target.value })}
+            className={inputCls}
+            required={nameRequired}
+          />
+        </Field>
+        <Field label="Email" required={emailRequired}>
+          <input
+            type="email"
+            value={value.email}
+            onChange={e => onChange({ ...value, email: e.target.value })}
+            placeholder="name@practice.com"
+            className={inputCls}
+            required={emailRequired}
+          />
+        </Field>
+        <Field label="Phone" required={phoneRequired}>
+          <input
+            type="tel"
+            value={value.phone}
+            onChange={e => onChange({ ...value, phone: e.target.value })}
+            placeholder="(555) 123-4567"
+            className={inputCls}
+            required={phoneRequired}
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 export default function OnboardPage() {
   return (
     <Suspense fallback={
@@ -183,22 +302,36 @@ function OnboardForm() {
   const [buildingAccess, setBuildingAccess] = useState("");
   const [timezone, setTimezone] = useState("");
   const [doctorNames, setDoctorNames] = useState("");
-  const [pointOfContact, setPointOfContact] = useState("");
-  const [billingContact, setBillingContact] = useState("");
-  const [emergencyContact, setEmergencyContact] = useState("");
-  const [schedulingContact, setSchedulingContact] = useState("");
+  const [pointOfContact, setPointOfContact] = useState<ContactInfo>(emptyContact);
+  const [billingContact, setBillingContact] = useState<ContactInfo>(emptyContact);
+  const [emergencyContact, setEmergencyContact] = useState<ContactInfo>(emptyContact);
+  const [schedulingContact, setSchedulingContact] = useState<ContactInfo>(emptyContact);
   const [clinicHours, setClinicHours] = useState<ClinicHours>(() => {
     const h: ClinicHours = {};
     DAYS.forEach(d => { h[d] = { open: "09:00", close: "17:00", closed: d === "Saturday" || d === "Sunday" }; });
     return h;
   });
+  const [upcomingClosures, setUpcomingClosures] = useState<Closure[]>([]);
 
   // Availability
   const [bookingScope, setBookingScope] = useState("new_only");
   const [apptTypes, setApptTypes] = useState<Record<string, ApptTypeConfig>>(() => {
     const t: Record<string, ApptTypeConfig> = {};
     APPOINTMENT_TYPES.forEach(a => {
-      t[a] = { enabled: a === "New Patient Consult", days: [...DAYS.slice(0, 5)], startTime: "09:00", endTime: "17:00", duration: "60", rescheduleWindow: "", allowedChairs: "", urgentIfUnavailable: null };
+      t[a] = {
+        enabled: a === "New Patient Consult",
+        days: [...DAYS.slice(0, 5)],
+        startTime: "09:00",
+        endTime: "17:00",
+        duration: "60",
+        rescheduleWindow: "",
+        allowedChairs: "",
+        urgentIfUnavailable: null,
+        cancellationWindowHours: "",
+        bookBeforeWindow: "",
+        bookBeforeUnit: "hours",
+        doubleBookingAllowed: null,
+      };
     });
     return t;
   });
@@ -220,9 +353,8 @@ function OnboardForm() {
   const [wordsToAvoid, setWordsToAvoid] = useState("");
   const [wordsToUse, setWordsToUse] = useState("");
 
-  // Lunch
-  const [lunchStart, setLunchStart] = useState("12:00");
-  const [lunchEnd, setLunchEnd] = useState("13:00");
+  // Lunch — per-day config
+  const [lunchHours, setLunchHours] = useState<LunchConfig>(defaultLunchHours);
 
   // Insurance
   const [wantsInsurance, setWantsInsurance] = useState(false);
@@ -280,11 +412,11 @@ function OnboardForm() {
           practiceName, dbaName, officePhone, officeEmail, website, address,
           multiLocation, additionalLocations, parkingNotes, buildingAccess,
           timezone, doctorNames, pointOfContact, billingContact, emergencyContact,
-          schedulingContact, clinicHours, bookingScope, apptTypes, otherApptType,
+          schedulingContact, clinicHours, upcomingClosures, bookingScope, apptTypes, otherApptType,
           mainProvider, allowedProviders, ageRestrictions, minRescheduleHours, minCancelHours,
           intakeFields, otherIntakeFields, chiefConcernRequired,
           bookWithoutInsurance, emergencyActions, wordsToAvoid, wordsToUse,
-          lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
+          lunchHours, wantsInsurance, npi, providerFirstName,
           providerLastName, orgLegalName, voiceGender, languages, otherLanguage,
           personality, tone, commonQuestions, insuranceNotAccepted, financingOptions,
           consultationPrice, retainerProcess, bracesAlignerFaqs, missedApptPolicy,
@@ -316,18 +448,29 @@ function OnboardForm() {
       if (d.buildingAccess) setBuildingAccess(d.buildingAccess);
       if (d.timezone) setTimezone(d.timezone);
       if (d.doctorNames) setDoctorNames(d.doctorNames);
-      if (d.pointOfContact) setPointOfContact(d.pointOfContact);
-      if (d.billingContact) setBillingContact(d.billingContact);
-      if (d.emergencyContact) setEmergencyContact(d.emergencyContact);
-      if (d.schedulingContact) setSchedulingContact(d.schedulingContact);
+      if (d.pointOfContact !== undefined) setPointOfContact(coerceContact(d.pointOfContact));
+      if (d.billingContact !== undefined) setBillingContact(coerceContact(d.billingContact));
+      if (d.emergencyContact !== undefined) setEmergencyContact(coerceContact(d.emergencyContact));
+      if (d.schedulingContact !== undefined) setSchedulingContact(coerceContact(d.schedulingContact));
       if (d.clinicHours) setClinicHours(d.clinicHours);
+      if (Array.isArray(d.upcomingClosures)) setUpcomingClosures(d.upcomingClosures as Closure[]);
       if (d.bookingScope) setBookingScope(d.bookingScope);
       if (d.apptTypes) {
-        const loaded = d.apptTypes as Record<string, ApptTypeConfig>;
+        const loaded = d.apptTypes as Record<string, Partial<ApptTypeConfig>>;
         setApptTypes(prev => {
           const merged: Record<string, ApptTypeConfig> = { ...prev };
           for (const key of Object.keys(loaded)) {
-            merged[key] = { ...merged[key], rescheduleWindow: "", allowedChairs: "", urgentIfUnavailable: null, ...loaded[key] };
+            merged[key] = {
+              ...merged[key],
+              rescheduleWindow: "",
+              allowedChairs: "",
+              urgentIfUnavailable: null,
+              cancellationWindowHours: "",
+              bookBeforeWindow: "",
+              bookBeforeUnit: "hours",
+              doubleBookingAllowed: null,
+              ...loaded[key],
+            } as ApptTypeConfig;
           }
           return merged;
         });
@@ -345,8 +488,16 @@ function OnboardForm() {
       if (d.emergencyActions) setEmergencyActions(d.emergencyActions);
       if (d.wordsToAvoid) setWordsToAvoid(d.wordsToAvoid);
       if (d.wordsToUse) setWordsToUse(d.wordsToUse);
-      if (d.lunchStart) setLunchStart(d.lunchStart);
-      if (d.lunchEnd) setLunchEnd(d.lunchEnd);
+      if (d.lunchHours && typeof d.lunchHours === "object") {
+        setLunchHours(d.lunchHours as LunchConfig);
+      } else if (d.lunchStart || d.lunchEnd) {
+        // Migrate legacy single-range draft to per-day.
+        const start = d.lunchStart || "12:00";
+        const end = d.lunchEnd || "13:00";
+        const migrated: LunchConfig = {};
+        DAYS.forEach(day => { migrated[day] = { start, end, noLunch: false }; });
+        setLunchHours(migrated);
+      }
       if (d.wantsInsurance !== undefined) setWantsInsurance(d.wantsInsurance);
       if (d.npi) setNpi(d.npi);
       if (d.providerFirstName) setProviderFirstName(d.providerFirstName);
@@ -421,18 +572,29 @@ function OnboardForm() {
           if (fd.buildingAccess) setBuildingAccess(fd.buildingAccess as string);
           if (fd.timezone) setTimezone(fd.timezone as string);
           if (fd.doctorNames) setDoctorNames(fd.doctorNames as string);
-          if (fd.pointOfContact) setPointOfContact(fd.pointOfContact as string);
-          if (fd.billingContact) setBillingContact(fd.billingContact as string);
-          if (fd.emergencyContact) setEmergencyContact(fd.emergencyContact as string);
-          if (fd.schedulingContact) setSchedulingContact(fd.schedulingContact as string);
+          if (fd.pointOfContact !== undefined) setPointOfContact(coerceContact(fd.pointOfContact));
+          if (fd.billingContact !== undefined) setBillingContact(coerceContact(fd.billingContact));
+          if (fd.emergencyContact !== undefined) setEmergencyContact(coerceContact(fd.emergencyContact));
+          if (fd.schedulingContact !== undefined) setSchedulingContact(coerceContact(fd.schedulingContact));
           if (fd.clinicHours) setClinicHours(fd.clinicHours as ClinicHours);
+          if (Array.isArray(fd.upcomingClosures)) setUpcomingClosures(fd.upcomingClosures as Closure[]);
           if (fd.bookingScope) setBookingScope(fd.bookingScope as string);
           if (fd.apptTypes) {
-            const loaded = fd.apptTypes as Record<string, ApptTypeConfig>;
+            const loaded = fd.apptTypes as Record<string, Partial<ApptTypeConfig>>;
             setApptTypes(prev => {
               const merged: Record<string, ApptTypeConfig> = { ...prev };
               for (const key of Object.keys(loaded)) {
-                merged[key] = { ...merged[key], rescheduleWindow: "", allowedChairs: "", urgentIfUnavailable: null, ...loaded[key] };
+                merged[key] = {
+                  ...merged[key],
+                  rescheduleWindow: "",
+                  allowedChairs: "",
+                  urgentIfUnavailable: null,
+                  cancellationWindowHours: "",
+                  bookBeforeWindow: "",
+                  bookBeforeUnit: "hours",
+                  doubleBookingAllowed: null,
+                  ...loaded[key],
+                } as ApptTypeConfig;
               }
               return merged;
             });
@@ -450,8 +612,16 @@ function OnboardForm() {
           if (fd.emergencyActions) setEmergencyActions(fd.emergencyActions as string[]);
           if (fd.wordsToAvoid) setWordsToAvoid(fd.wordsToAvoid as string);
           if (fd.wordsToUse) setWordsToUse(fd.wordsToUse as string);
-          if (fd.lunchStart) setLunchStart(fd.lunchStart as string);
-          if (fd.lunchEnd) setLunchEnd(fd.lunchEnd as string);
+          if (fd.lunchHours && typeof fd.lunchHours === "object") {
+            setLunchHours(fd.lunchHours as LunchConfig);
+          } else if (fd.lunchStart || fd.lunchEnd) {
+            // Migrate legacy single-range submission to per-day.
+            const start = (fd.lunchStart as string) || "12:00";
+            const end = (fd.lunchEnd as string) || "13:00";
+            const migrated: LunchConfig = {};
+            DAYS.forEach(day => { migrated[day] = { start, end, noLunch: false }; });
+            setLunchHours(migrated);
+          }
           if (fd.wantsInsurance) setWantsInsurance(fd.wantsInsurance as boolean);
           if (fd.npi) setNpi(fd.npi as string);
           if (fd.providerFirstName) setProviderFirstName(fd.providerFirstName as string);
@@ -517,11 +687,11 @@ function OnboardForm() {
     const formData = {
       address, multiLocation, additionalLocations, parkingNotes, buildingAccess,
       timezone, doctorNames, pointOfContact, billingContact, emergencyContact,
-      schedulingContact, clinicHours, bookingScope, apptTypes, otherApptType,
+      schedulingContact, clinicHours, upcomingClosures, bookingScope, apptTypes, otherApptType,
       mainProvider, allowedProviders, ageRestrictions, minRescheduleHours, minCancelHours,
       intakeFields, otherIntakeFields, chiefConcernRequired,
       bookWithoutInsurance, emergencyActions, wordsToAvoid, wordsToUse,
-      lunchStart, lunchEnd, wantsInsurance, npi, providerFirstName,
+      lunchHours, wantsInsurance, npi, providerFirstName,
       providerLastName, orgLegalName, voiceGender, languages, otherLanguage,
       personality, tone, commonQuestions, insuranceNotAccepted, financingOptions,
       consultationPrice, retainerProcess, bracesAlignerFaqs, missedApptPolicy,
@@ -597,15 +767,22 @@ function OnboardForm() {
     const editUrl = editToken ? `${window.location.origin}/onboard/${slug}?edit=${editToken}` : "";
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
-        <div className="max-w-md rounded-xl border bg-white p-10 text-center shadow-sm">
+        <div className="max-w-lg rounded-xl border bg-white p-10 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold">Thank You!</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Thanks for choosing Orthia</h1>
           <p className="mt-3 text-gray-600">
-            Your onboarding information has been submitted successfully. Our team will review your information and get you onboarded.
+            We&rsquo;ve received your onboarding information. Our team will reach out within one business day to schedule your onboarding call and walk you through the next steps.
+          </p>
+          <p className="mt-3 text-gray-600">
+            If anything urgent comes up, you can reply to the confirmation email
+            {SUPPORT_PHONE ? (
+              <> or call us at <a href={`tel:${SUPPORT_PHONE.replace(/[^+\d]/g, "")}`} className="font-medium text-blue-600 underline">{SUPPORT_PHONE}</a></>
+            ) : null}
+            .
           </p>
           {editUrl && (editTokenFromUrl || editToken) && (
             <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
@@ -700,9 +877,18 @@ function OnboardForm() {
             <p className="text-sm text-blue-800 font-medium">You are editing a previously submitted form. Changes will update your submission.</p>
           </div>
         )}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Practice Onboarding</h1>
           <p className="mt-1 text-gray-500">Please complete all sections below. Pre-filled information can be edited.</p>
+        </div>
+
+        <div className="mb-8 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm text-blue-900">
+            Everything you enter here can be adjusted during your onboarding call or any time after. Nothing is final. We just want a starting point so we can hit the ground running with your practice.
+          </p>
         </div>
 
         <form ref={formRef} onSubmit={handleSubmit} className={`space-y-10 ${isAdminView && submitted ? "pointer-events-none opacity-75" : ""}`}>
@@ -762,22 +948,29 @@ function OnboardForm() {
                 <textarea value={doctorNames} onChange={e => setDoctorNames(e.target.value)} rows={2} placeholder="Dr. Smith, Dr. Jones..." className={textareaCls} />
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Primary Office Manager / Point of Contact">
-                  <input type="text" value={pointOfContact} onChange={e => setPointOfContact(e.target.value)} className={inputCls} />
-                </Field>
-                <Field label="Billing Contact">
-                  <input type="text" value={billingContact} onChange={e => setBillingContact(e.target.value)} className={inputCls} />
-                </Field>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Emergency Contact">
-                  <input type="text" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} className={inputCls} />
-                </Field>
-                <Field label="Scheduling Contact">
-                  <input type="text" value={schedulingContact} onChange={e => setSchedulingContact(e.target.value)} className={inputCls} />
-                </Field>
-              </div>
+              <ContactBlock
+                label="Primary Office Manager / Point of Contact"
+                nameRequired
+                emailRequired
+                phoneRequired
+                value={pointOfContact}
+                onChange={setPointOfContact}
+              />
+              <ContactBlock
+                label="Billing Contact"
+                value={billingContact}
+                onChange={setBillingContact}
+              />
+              <ContactBlock
+                label="Emergency Contact"
+                value={emergencyContact}
+                onChange={setEmergencyContact}
+              />
+              <ContactBlock
+                label="Scheduling Contact"
+                value={schedulingContact}
+                onChange={setSchedulingContact}
+              />
 
               {/* Clinic Hours */}
               <div>
@@ -804,6 +997,108 @@ function OnboardForm() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Upcoming closures and adjusted hours */}
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-gray-700">Upcoming closures and adjusted hours</label>
+                  <span className="text-xs text-gray-400">Optional</span>
+                </div>
+                <p className="mb-2 text-xs text-gray-500">
+                  Add dates in the next 3 months where you&rsquo;ll be closed or on adjusted hours (holidays, training days, doctor out of office). You can always add more later.
+                </p>
+                <div className="space-y-3 rounded-lg border p-4">
+                  {upcomingClosures.length === 0 && (
+                    <p className="text-sm text-gray-400">No closures added yet.</p>
+                  )}
+                  {upcomingClosures.map((c) => (
+                    <div key={c.id} className="rounded-lg border bg-white p-3">
+                      <div className="grid gap-3 sm:grid-cols-12">
+                        <div className="sm:col-span-3">
+                          <label className="mb-1 block text-xs text-gray-500">Date</label>
+                          <input
+                            type="date"
+                            value={c.date}
+                            min={todayISO()}
+                            max={plusDaysISO(90)}
+                            onChange={e => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, date: e.target.value } : x))}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <label className="mb-1 block text-xs text-gray-500">Type</label>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, mode: "closed" } : x))}
+                              className={`flex-1 rounded px-2 py-1 text-xs font-medium ${c.mode === "closed" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                            >
+                              Closed
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, mode: "adjusted" } : x))}
+                              className={`flex-1 rounded px-2 py-1 text-xs font-medium ${c.mode === "adjusted" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}
+                            >
+                              Adjusted hours
+                            </button>
+                          </div>
+                        </div>
+                        {c.mode === "adjusted" && (
+                          <div className="sm:col-span-3">
+                            <label className="mb-1 block text-xs text-gray-500">Hours</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="time"
+                                value={c.startTime}
+                                onChange={e => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, startTime: e.target.value } : x))}
+                                className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs"
+                              />
+                              <span className="text-xs text-gray-400">-</span>
+                              <input
+                                type="time"
+                                value={c.endTime}
+                                onChange={e => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, endTime: e.target.value } : x))}
+                                className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className={c.mode === "adjusted" ? "sm:col-span-3" : "sm:col-span-6"}>
+                          <label className="mb-1 block text-xs text-gray-500">Label (optional)</label>
+                          <input
+                            type="text"
+                            value={c.label}
+                            onChange={e => setUpcomingClosures(prev => prev.map(x => x.id === c.id ? { ...x, label: e.target.value } : x))}
+                            placeholder="e.g., Memorial Day, Dr. out of office"
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setUpcomingClosures(prev => prev.filter(x => x.id !== c.id))}
+                          className="text-xs font-medium text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setUpcomingClosures(prev => [
+                      ...prev,
+                      { id: newClosureId(), date: todayISO(), mode: "closed", startTime: "09:00", endTime: "17:00", label: "" },
+                    ])}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-blue-300 bg-blue-50/50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Add a closure or adjusted day
+                  </button>
                 </div>
               </div>
             </div>
@@ -843,8 +1138,8 @@ function OnboardForm() {
                           <span className="font-medium">{type}</span>
                         </label>
                         {apptTypes[type]?.enabled && (
-                          <div className="ml-6 mt-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-8">
-                            <div className="sm:col-span-4">
+                          <div className="ml-6 mt-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-6">
+                            <div className="sm:col-span-6">
                               <label className="mb-1 block text-xs text-gray-500">Allowed Days</label>
                               <div className="flex flex-wrap gap-1">
                                 {DAYS.map(d => (
@@ -866,19 +1161,40 @@ function OnboardForm() {
                                 <input type="time" value={apptTypes[type].endTime} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], endTime: e.target.value } }))} className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs" />
                               </div>
                             </div>
-                            <div className="sm:col-span-1">
+                            <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Duration (min)</label>
                               <input type="number" value={apptTypes[type].duration} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], duration: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" min="5" step="5" />
                             </div>
                             <div className="sm:col-span-3">
-                              <label className="mb-1 block text-xs text-gray-500">Reschedule Window (days)</label>
-                              <input type="number" value={apptTypes[type].rescheduleWindow} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], rescheduleWindow: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="e.g., 7" min="1" />
+                              <label className="mb-1 block text-xs text-gray-500">Reschedule window (days)</label>
+                              <input type="number" value={apptTypes[type].rescheduleWindow} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], rescheduleWindow: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="e.g., 7" min="0" />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <label className="mb-1 block text-xs text-gray-500">Cancellation window (hours)</label>
+                              <input type="number" value={apptTypes[type].cancellationWindowHours} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], cancellationWindowHours: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="e.g., 24" min="0" />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <label className="mb-1 block text-xs text-gray-500">Book-before window</label>
+                              <div className="flex items-center gap-1">
+                                <input type="number" value={apptTypes[type].bookBeforeWindow} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], bookBeforeWindow: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="e.g., 2" min="0" />
+                                <select value={apptTypes[type].bookBeforeUnit} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], bookBeforeUnit: e.target.value as "hours" | "days" } }))} className="rounded border border-gray-300 px-1.5 py-1 text-xs">
+                                  <option value="hours">hours</option>
+                                  <option value="days">days</option>
+                                </select>
+                              </div>
                             </div>
                             <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Allowed Chairs</label>
                               <input type="text" value={apptTypes[type].allowedChairs} onChange={e => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], allowedChairs: e.target.value } }))} className="w-full rounded border border-gray-300 px-2 py-1 text-xs" placeholder="Leave blank if no specific chair" />
                             </div>
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-3">
+                              <label className="mb-1 block text-xs text-gray-500">Double booking allowed?</label>
+                              <div className="flex gap-1">
+                                <button type="button" onClick={() => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], doubleBookingAllowed: true } }))} className={`rounded px-3 py-0.5 text-xs font-medium ${apptTypes[type].doubleBookingAllowed === true ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>Yes</button>
+                                <button type="button" onClick={() => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], doubleBookingAllowed: false } }))} className={`rounded px-3 py-0.5 text-xs font-medium ${apptTypes[type].doubleBookingAllowed === false ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>No</button>
+                              </div>
+                            </div>
+                            <div className="sm:col-span-3">
                               <label className="mb-1 block text-xs text-gray-500">Urgent task if unavailable?</label>
                               <div className="flex gap-1">
                                 <button type="button" onClick={() => setApptTypes(prev => ({ ...prev, [type]: { ...prev[type], urgentIfUnavailable: true } }))} className={`rounded px-3 py-0.5 text-xs font-medium ${apptTypes[type].urgentIfUnavailable === true ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>Yes</button>
@@ -891,6 +1207,9 @@ function OnboardForm() {
                     ))}
                     <Field label="Other Appointment Type">
                       <input type="text" value={otherApptType} onChange={e => setOtherApptType(e.target.value)} placeholder="Specify any other types..." className={inputCls} />
+                      <p className="mt-1 text-xs text-gray-500">
+                        If you need appointment types beyond the ones we offer out of the box, let us know here. We&rsquo;ll discuss these during your onboarding call. Custom appointment types require additional configuration and may involve an added fee depending on scope.
+                      </p>
                     </Field>
                   </div>
                 </div>
@@ -964,14 +1283,58 @@ function OnboardForm() {
           {/* Section 5: Lunch Hours */}
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <SectionHeader number={5} title="Lunch Hours" />
-            <div className="flex items-center gap-3">
-              <Field label="Start">
-                <input type="time" value={lunchStart} onChange={e => setLunchStart(e.target.value)} className={inputCls} />
-              </Field>
-              <span className="mt-6 text-gray-400">to</span>
-              <Field label="End">
-                <input type="time" value={lunchEnd} onChange={e => setLunchEnd(e.target.value)} className={inputCls} />
-              </Field>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">Set lunch hours for each day. Check &ldquo;No lunch&rdquo; for days your office doesn&rsquo;t break.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const monday = lunchHours["Monday"] || { start: "12:00", end: "13:00", noLunch: false };
+                    setLunchHours(() => {
+                      const next: LunchConfig = {};
+                      DAYS.forEach(d => { next[d] = { ...monday }; });
+                      return next;
+                    });
+                  }}
+                  className="text-sm font-medium text-blue-600 hover:underline"
+                >
+                  Use same lunch for all days
+                </button>
+              </div>
+              <div className="space-y-2 rounded-lg border p-4">
+                {DAYS.map(day => {
+                  const cfg = lunchHours[day] || { start: "12:00", end: "13:00", noLunch: false };
+                  return (
+                    <div key={day} className="flex items-center gap-3">
+                      <span className="w-24 text-sm font-medium text-gray-700">{day}</span>
+                      <label className="flex items-center gap-1.5 text-sm text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={cfg.noLunch}
+                          onChange={e => setLunchHours(prev => ({ ...prev, [day]: { ...(prev[day] || cfg), noLunch: e.target.checked } }))}
+                          className="rounded border-gray-300"
+                        />
+                        No lunch
+                      </label>
+                      <input
+                        type="time"
+                        value={cfg.start}
+                        disabled={cfg.noLunch}
+                        onChange={e => setLunchHours(prev => ({ ...prev, [day]: { ...(prev[day] || cfg), start: e.target.value } }))}
+                        className="rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                      />
+                      <span className="text-gray-400">to</span>
+                      <input
+                        type="time"
+                        value={cfg.end}
+                        disabled={cfg.noLunch}
+                        onChange={e => setLunchHours(prev => ({ ...prev, [day]: { ...(prev[day] || cfg), end: e.target.value } }))}
+                        className="rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
@@ -1037,8 +1400,11 @@ function OnboardForm() {
                     Other
                   </label>
                 </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  English and Spanish are included at no extra cost. Each additional language is $25 per month. If &ldquo;Other&rdquo; is selected, our team will confirm the language and add it to your plan.
+                </p>
                 {languages.includes("Other") && (
-                  <input type="text" value={otherLanguage} onChange={e => setOtherLanguage(e.target.value)} placeholder="Specify language..." className={`mt-2 ${inputCls}`} />
+                  <input type="text" value={otherLanguage} onChange={e => setOtherLanguage(e.target.value)} placeholder="Which language(s)? (optional)" className={`mt-2 ${inputCls}`} />
                 )}
               </div>
               <Field label="Personality Preferences">
