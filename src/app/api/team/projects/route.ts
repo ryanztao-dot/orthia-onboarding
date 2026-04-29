@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const key = String(body.key || "").toUpperCase().trim();
-  const name = String(body.name || "").trim();
+  const name = String(body.name || "").trim().slice(0, 200);
   if (!/^[A-Z0-9]{2,8}$/.test(key)) {
     return NextResponse.json(
       { error: "Key must be 2–8 uppercase letters/digits" },
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  const description = body.description ? String(body.description).slice(0, 50_000) : null;
 
   const { data, error } = await teamDb
     .from("tt_projects")
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       organization_id: user.organization_id,
       key,
       name,
-      description: body.description || null,
+      description,
       created_by: user.id,
     })
     .select()

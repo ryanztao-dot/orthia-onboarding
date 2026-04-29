@@ -19,6 +19,7 @@ export interface User {
   email: string;
   password_hash: string;
   role: Role;
+  password_changed_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -43,8 +43,8 @@ export async function PATCH(
 
   const body = await req.json();
   const patch: Partial<Project> = {};
-  if (typeof body.name === "string") patch.name = body.name.trim();
-  if (typeof body.description === "string") patch.description = body.description;
+  if (typeof body.name === "string") patch.name = body.name.trim().slice(0, 200);
+  if (typeof body.description === "string") patch.description = body.description.slice(0, 50_000);
   if (typeof body.archived === "boolean") {
     patch.archived_at = body.archived ? new Date().toISOString() : null;
   }

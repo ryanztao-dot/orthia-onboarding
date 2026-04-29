@@ -128,7 +128,7 @@ export async function getCurrentUser(req: NextRequest): Promise<PublicUser | nul
     .eq("id", userId)
     .maybeSingle();
   if (error || !data) return null;
-  const u = data as User & { password_changed_at?: string | null };
+  const u = data as User;
 
   // If the user's password was changed AFTER this session was issued, the
   // session is stale and must be rejected. Old sessions (from before this

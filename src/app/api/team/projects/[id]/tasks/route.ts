@@ -102,7 +102,7 @@ export async function POST(
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
-  const title = String(body.title || "").trim();
+  const title = String(body.title || "").trim().slice(0, 500);
   if (!title) return NextResponse.json({ error: "Title is required" }, { status: 400 });
 
   const status: Status = VALID_STATUS.includes(body.status) ? body.status : "todo";
@@ -179,7 +179,7 @@ export async function POST(
         project_id: project.id,
         number: nextNumber,
         title,
-        description: body.description || null,
+        description: body.description ? String(body.description).slice(0, 50_000) : null,
         status,
         priority,
         type,

@@ -42,8 +42,12 @@ export async function PATCH(
 
   const body = await req.json();
   const patch: Record<string, unknown> = {};
-  if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
-  if ("goal" in body) patch.goal = body.goal || null;
+  if (typeof body.name === "string" && body.name.trim()) {
+    patch.name = body.name.trim().slice(0, 200);
+  }
+  if ("goal" in body) {
+    patch.goal = body.goal ? String(body.goal).slice(0, 5_000) : null;
+  }
   if ("start_date" in body) patch.start_date = body.start_date || null;
   if ("end_date" in body) patch.end_date = body.end_date || null;
 

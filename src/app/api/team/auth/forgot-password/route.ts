@@ -10,6 +10,17 @@ function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 export async function POST(req: NextRequest) {
   let body: { email?: string };
   try {
@@ -72,9 +83,11 @@ We received a request to reset your password. Click the link below to choose a n
 ${link}
 
 If you didn't request this, you can ignore this email.`;
-  const html = `<p>Hi ${u.name || ""},</p>
+  const safeName = escHtml(u.name || "");
+  const safeLink = escHtml(link);
+  const html = `<p>Hi ${safeName},</p>
 <p>We received a request to reset your password. Click the link below to choose a new one. The link expires in 1 hour.</p>
-<p><a href="${link}">${link}</a></p>
+<p><a href="${safeLink}">${safeLink}</a></p>
 <p>If you didn't request this, you can ignore this email.</p>`;
 
   const result = await sendEmail({ to: u.email, subject, text, html });

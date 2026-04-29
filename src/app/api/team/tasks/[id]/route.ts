@@ -64,7 +64,7 @@ export async function GET(
           .is("deleted_at", null)
           .eq("project_id", task.project_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     teamDb
       .from("tt_attachments")
       .select("*")
@@ -79,6 +79,7 @@ export async function GET(
     usersRes.error ||
     subtasksRes.error ||
     sprintsRes.error ||
+    parentRes.error ||
     attachmentsRes.error;
   if (subErr) {
     return NextResponse.json({ error: describeDbError(subErr) }, { status: 500 });
@@ -114,11 +115,12 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
 
   if (typeof body.title === "string" && body.title.trim() && body.title !== task.title) {
-    patch.title = body.title.trim();
-    await logActivity(task.id, user.id, "title_changed", { from: task.title, to: body.title.trim() });
+    const newTitle = body.title.trim().slice(0, 500);
+    patch.title = newTitle;
+    await logActivity(task.id, user.id, "title_changed", { from: task.title, to: newTitle });
   }
   if (typeof body.description === "string" && body.description !== (task.description ?? "")) {
-    patch.description = body.description;
+    patch.description = body.description.slice(0, 50_000);
     await logActivity(task.id, user.id, "description_changed", {});
   }
   if (typeof body.priority === "string" && VALID_PRIORITY.includes(body.priority) && body.priority !== task.priority) {
