@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useMe } from "../../../team-shell";
 import {
   Avatar,
@@ -33,6 +33,7 @@ export default function ProjectBoardPage({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [attachmentCounts, setAttachmentCounts] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [filterAssignee, setFilterAssignee] = useState<string>("");
   const [filterSprint, setFilterSprint] = useState<string>("active"); // 'active', 'all', 'backlog', or sprint id
@@ -42,25 +43,37 @@ export default function ProjectBoardPage({
   const canEdit = me?.user?.role === "admin" || me?.user?.role === "developer";
 
   async function load() {
-    const sprintParam = filterSprint === "all" ? "" : `&sprint=${filterSprint}`;
-    const [pRes, uRes, sRes] = await Promise.all([
-      fetch(`/api/team/projects/${id}/tasks?_=${Date.now()}${sprintParam}`),
-      fetch(`/api/team/users`),
-      fetch(`/api/team/projects/${id}/sprints`),
-    ]);
-    const p = await pRes.json();
-    const u = await uRes.json();
-    const s = await sRes.json();
-    setProject(p.project);
-    setTasks(p.tasks || []);
-    setUsers(u.users || []);
-    setSprints(s.sprints || []);
-    // If no active sprint and filter is "active", fall back to "all".
-    const hasActive = ((s.sprints || []) as Sprint[]).some((x) => x.state === "active");
-    if (filterSprint === "active" && !hasActive) {
-      setFilterSprint("all");
+    try {
+      const sprintParam = filterSprint === "all" ? "" : `&sprint=${filterSprint}`;
+      const [pRes, uRes, sRes] = await Promise.all([
+        fetch(`/api/team/projects/${id}/tasks?_=${Date.now()}${sprintParam}`),
+        fetch(`/api/team/users`),
+        fetch(`/api/team/projects/${id}/sprints`),
+      ]);
+      if (!pRes.ok || !uRes.ok || !sRes.ok) {
+        const failing = [pRes, uRes, sRes].find((r) => !r.ok);
+        const d = await failing?.json().catch(() => ({}));
+        alert(d?.error || "Could not load board. Please refresh.");
+        setLoading(false);
+        return;
+      }
+      const p = await pRes.json();
+      const u = await uRes.json();
+      const s = await sRes.json();
+      setProject(p.project);
+      setTasks(p.tasks || []);
+      setUsers(u.users || []);
+      setSprints(s.sprints || []);
+      setAttachmentCounts(p.attachmentCounts || {});
+      const hasActive = ((s.sprints || []) as Sprint[]).some((x) => x.state === "active");
+      if (filterSprint === "active" && !hasActive) {
+        setFilterSprint("all");
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Could not load board.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -146,6 +159,26 @@ export default function ProjectBoardPage({
       body: JSON.stringify(patch),
     });
     load();
+  }
+
+  async function uploadToTask(taskId: number, file: File): Promise<boolean> {
+    if (file.type !== "application/pdf") {
+      alert("Only PDF files are allowed.");
+      return false;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(`/api/team/tasks/${taskId}/attachments`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Upload failed.");
+      return false;
+    }
+    load();
+    return true;
   }
 
   const activeSprint = sprints.find((s) => s.state === "active") || null;
@@ -239,6 +272,8 @@ export default function ProjectBoardPage({
                           onDragEnd={() => setDragging(null)}
                           onChange={(patch) => updateTask(task.id, patch)}
                           assigneeName={userById.get(task.assignee_id ?? -1)?.name || null}
+                          attachmentCount={attachmentCounts[task.id] || 0}
+                          onUpload={(f) => uploadToTask(task.id, f)}
                         />
                       </div>
                     ))}
@@ -280,6 +315,8 @@ function TaskCard({
   onDragEnd,
   onChange,
   assigneeName,
+  attachmentCount,
+  onUpload,
 }: {
   task: Task;
   project: Project;
@@ -289,7 +326,11 @@ function TaskCard({
   onDragEnd: () => void;
   onChange: (p: Partial<Task>) => void;
   assigneeName: string | null;
+  attachmentCount: number;
+  onUpload: (f: File) => Promise<boolean>;
 }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
   return (
     <div
       draggable={canEdit}
@@ -351,6 +392,42 @@ function TaskCard({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setBusy(true);
+                  await onUpload(f);
+                  setBusy(false);
+                  if (fileRef.current) fileRef.current.value = "";
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileRef.current?.click();
+                }}
+                title={
+                  attachmentCount > 0
+                    ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
+                    : "Upload PDF"
+                }
+                disabled={busy}
+                className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+              >
+                <span aria-hidden>📎</span>
+                {attachmentCount > 0 && (
+                  <span className="font-medium">{attachmentCount}</span>
+                )}
+              </button>
+            </>
+          )}
           {task.story_points != null && (
             <span
               title="Story points"

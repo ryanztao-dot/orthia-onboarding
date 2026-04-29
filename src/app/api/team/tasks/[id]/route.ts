@@ -33,7 +33,7 @@ export async function GET(
   const task = await loadTaskInOrg(Number(id), user.organization_id);
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const [commentsRes, activitiesRes, usersRes, subtasksRes, sprintsRes, parentRes] = await Promise.all([
+  const [commentsRes, activitiesRes, usersRes, subtasksRes, sprintsRes, parentRes, attachmentsRes] = await Promise.all([
     teamDb
       .from("tt_comments")
       .select("*")
@@ -65,7 +65,24 @@ export async function GET(
           .eq("project_id", task.project_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    teamDb
+      .from("tt_attachments")
+      .select("*")
+      .eq("task_id", task.id)
+      .order("created_at", { ascending: false }),
   ]);
+  // If any sub-query failed (network, permissions, etc.), surface it instead
+  // of returning silently truncated data.
+  const subErr =
+    commentsRes.error ||
+    activitiesRes.error ||
+    usersRes.error ||
+    subtasksRes.error ||
+    sprintsRes.error ||
+    attachmentsRes.error;
+  if (subErr) {
+    return NextResponse.json({ error: describeDbError(subErr) }, { status: 500 });
+  }
   return NextResponse.json({
     task,
     project: task.tt_projects,
@@ -75,6 +92,7 @@ export async function GET(
     subtasks: subtasksRes.data || [],
     sprints: sprintsRes.data || [],
     parent: parentRes.data || null,
+    attachments: attachmentsRes.data || [],
   });
 }
 

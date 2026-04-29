@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import TeamShell, { useMe } from "../../team-shell";
 import { renderMarkdown } from "@/lib/team/markdown";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/lib/team/ui";
 import type {
   Activity,
+  Attachment,
   Comment,
   Priority,
   PublicUser,
@@ -40,6 +41,13 @@ interface DetailResponse {
   subtasks: Subtask[];
   sprints: Sprint[];
   parent: { id: number; number: number; title: string; status: Status; type: TaskType } | null;
+  attachments: Attachment[];
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 type ActivityTab = "all" | "comments" | "history";
@@ -52,6 +60,7 @@ export default function TaskDetailPage({
   const { id } = use(params);
   const me = useMe();
   const [data, setData] = useState<DetailResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
@@ -63,17 +72,75 @@ export default function TaskDetailPage({
   const [activityTab, setActivityTab] = useState<ActivityTab>("all");
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canEdit =
     me?.user?.role === "admin" || me?.user?.role === "developer";
 
   async function load() {
-    const r = await fetch(`/api/team/tasks/${id}`);
-    if (!r.ok) return;
-    const d: DetailResponse = await r.json();
-    setData(d);
-    setDescDraft(d.task.description || "");
-    setTitleDraft(d.task.title);
+    try {
+      const r = await fetch(`/api/team/tasks/${id}`);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setLoadError(d.error || `Failed to load task (${r.status})`);
+        return;
+      }
+      const d: DetailResponse = await r.json();
+      setData(d);
+      setLoadError(null);
+      setDescDraft(d.task.description || "");
+      setTitleDraft(d.task.title);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Network error");
+    }
+  }
+
+  async function uploadFile(file: File) {
+    if (file.type !== "application/pdf") {
+      alert("Only PDF files are allowed.");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    setUploading(true);
+    try {
+      const res = await fetch(`/api/team/tasks/${id}/attachments`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Upload failed.");
+        return;
+      }
+      await load();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function downloadAttachment(att: Attachment) {
+    const r = await fetch(`/api/team/attachments/${att.id}/url`);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Could not get download link.");
+      return;
+    }
+    const { url } = await r.json();
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function deleteAttachment(att: Attachment) {
+    if (!confirm(`Delete "${att.filename}"?`)) return;
+    const r = await fetch(`/api/team/attachments/${att.id}`, { method: "DELETE" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Could not delete attachment.");
+      return;
+    }
+    load();
   }
 
   useEffect(() => {
@@ -113,7 +180,7 @@ export default function TaskDetailPage({
       return; // keep the draft so the user doesn't lose their text
     }
     setCommentDraft("");
-    load();
+    await load();
   }
 
   async function saveCommentEdit(cid: number) {
@@ -166,6 +233,22 @@ export default function TaskDetailPage({
     }
   }
 
+  if (loadError && !data) {
+    return (
+      <TeamShell>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p className="font-semibold">Could not load task</p>
+          <p className="mt-1">{loadError}</p>
+          <button
+            onClick={load}
+            className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      </TeamShell>
+    );
+  }
   if (!data) {
     return (
       <TeamShell>
@@ -174,7 +257,7 @@ export default function TaskDetailPage({
     );
   }
 
-  const { task, project, comments, activities, users, subtasks, sprints, parent } = data;
+  const { task, project, comments, activities, users, subtasks, sprints, parent, attachments } = data;
   const userById = new Map(users.map((u) => [u.id, u]));
   const assignee = task.assignee_id ? userById.get(task.assignee_id) : null;
   const reporter = task.reporter_id ? userById.get(task.reporter_id) : null;
@@ -311,6 +394,73 @@ export default function TaskDetailPage({
                 </div>
               ) : (
                 <p className="text-sm italic text-slate-400">No description.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Attachments */}
+          <section className="mt-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Attachments ({attachments.length})
+              </h2>
+              {canEdit && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadFile(f);
+                    }}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                  >
+                    {uploading ? "Uploading…" : "+ Upload PDF"}
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {attachments.map((a) => {
+                const uploader = a.uploader_id ? userById.get(a.uploader_id) : null;
+                const mine = me?.user?.id === a.uploader_id;
+                const canDelete = mine || me?.user?.role === "admin";
+                return (
+                  <div
+                    key={a.id}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  >
+                    <span className="text-base" aria-hidden>📄</span>
+                    <button
+                      onClick={() => downloadAttachment(a)}
+                      className="flex-1 truncate text-left font-medium text-slate-900 hover:text-slate-600"
+                    >
+                      {a.filename}
+                    </button>
+                    <span className="text-xs text-slate-400">{formatBytes(a.size_bytes)}</span>
+                    <span className="text-xs text-slate-400">
+                      {uploader?.name || "Unknown"} · {new Date(a.created_at).toLocaleDateString()}
+                    </span>
+                    {canDelete && (
+                      <button
+                        onClick={() => deleteAttachment(a)}
+                        className="text-xs text-slate-400 hover:text-red-600"
+                        aria-label={`Delete ${a.filename}`}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {attachments.length === 0 && (
+                <p className="text-sm italic text-slate-400">No attachments.</p>
               )}
             </div>
           </section>
@@ -832,6 +982,10 @@ function describeActivity(
       return "edited the description";
     case "commented":
       return "commented";
+    case "attachment_added":
+      return `added attachment ${typeof meta.filename === "string" ? meta.filename : ""}`.trim();
+    case "attachment_removed":
+      return `removed attachment ${typeof meta.filename === "string" ? meta.filename : ""}`.trim();
     default:
       return a.action;
   }

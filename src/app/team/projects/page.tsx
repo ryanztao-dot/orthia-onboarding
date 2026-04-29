@@ -13,14 +13,26 @@ export default function ProjectsPage() {
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   async function load() {
-    const r = await fetch("/api/team/projects");
-    if (!r.ok) return;
-    const d = await r.json();
-    setProjects(d.projects || []);
-    setLoading(false);
+    try {
+      const r = await fetch("/api/team/projects");
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setLoadError(d.error || `Failed to load projects (${r.status})`);
+        setLoading(false);
+        return;
+      }
+      const d = await r.json();
+      setProjects(d.projects || []);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -29,12 +41,21 @@ export default function ProjectsPage() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    const trimmedKey = key.trim();
+    if (trimmedKey.length < 2 || trimmedKey.length > 8) {
+      setError("Key must be 2–8 characters.");
+      return;
+    }
+    if (!/^[A-Z0-9]+$/.test(trimmedKey)) {
+      setError("Key must be uppercase letters and digits only.");
+      return;
+    }
     setCreating(true);
     setError("");
     const r = await fetch("/api/team/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, key, description }),
+      body: JSON.stringify({ name, key: trimmedKey, description }),
     });
     setCreating(false);
     if (!r.ok) {
@@ -64,6 +85,15 @@ export default function ProjectsPage() {
           </button>
         )}
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {loadError}{" "}
+          <button onClick={load} className="font-semibold underline">
+            Retry
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-slate-400">Loading…</p>

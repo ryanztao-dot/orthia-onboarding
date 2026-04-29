@@ -125,6 +125,12 @@ export default function TeamLoginPage() {
                 >
                   {loading ? "Signing in…" : "Sign in"}
                 </button>
+                <a
+                  href="/team/forgot-password"
+                  className="block text-center text-xs text-gray-500 hover:text-gray-800"
+                >
+                  Forgot password?
+                </a>
               </form>
             </>
           )}

@@ -55,6 +55,36 @@ export default function SettingsPage() {
     load();
   }
 
+  async function resetUserPassword(id: number, name: string, email: string) {
+    if (
+      !confirm(
+        `Generate a password reset link for ${name} (${email})?\n\n` +
+          "The link is valid for 1 hour. Their existing sessions stay valid until they actually reset.",
+      )
+    ) {
+      return;
+    }
+    const r = await fetch(`/api/team/users/${id}/reset-password`, { method: "POST" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Could not generate reset link.");
+      return;
+    }
+    const { url } = (await r.json()) as { url: string };
+    // Best-effort copy. If the browser blocks clipboard access (e.g. http://
+    // dev origin without permission), fall back to a prompt the admin can
+    // copy from.
+    try {
+      await navigator.clipboard.writeText(url);
+      alert(`Reset link copied to clipboard. Share it with ${name}. Expires in 1 hour.`);
+    } catch {
+      window.prompt(
+        `Share this reset link with ${name} (expires in 1 hour):`,
+        url,
+      );
+    }
+  }
+
   return (
     <TeamShell title="Settings">
       <section className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6">
@@ -116,12 +146,20 @@ export default function SettingsPage() {
                 </td>
                 <td className="py-2.5 text-right">
                   {me?.user?.id !== u.id && (
-                    <button
-                      onClick={() => removeUser(u.id)}
-                      className="text-xs text-slate-500 hover:text-red-600"
-                    >
-                      Remove
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        onClick={() => resetUserPassword(u.id, u.name, u.email)}
+                        className="text-xs text-slate-500 hover:text-slate-900"
+                      >
+                        Reset password
+                      </button>
+                      <button
+                        onClick={() => removeUser(u.id)}
+                        className="text-xs text-slate-500 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -214,7 +252,7 @@ function InviteModal({
             Initial password (8+ chars)
           </span>
           <input
-            type="text"
+            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"

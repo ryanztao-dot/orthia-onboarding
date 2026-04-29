@@ -106,9 +106,34 @@ export interface Activity {
     | "labels_changed"
     | "type_changed"
     | "reporter_changed"
-    | "parent_changed";
+    | "parent_changed"
+    | "attachment_added"
+    | "attachment_removed";
   meta: Record<string, unknown>;
   created_at: string;
+}
+
+export interface Attachment {
+  id: number;
+  task_id: number;
+  uploader_id: number | null;
+  storage_path: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface TimeEntry {
+  id: number;
+  user_id: number;
+  task_id: number | null;
+  project_id: number | null;
+  entry_date: string;
+  minutes: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Mention {

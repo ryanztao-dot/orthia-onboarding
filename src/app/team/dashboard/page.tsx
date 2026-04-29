@@ -25,11 +25,30 @@ const PRIORITY_COLOR: Record<Priority, string> = {
 export default function DashboardPage() {
   const me = useMe();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/team/dashboard")
-      .then((r) => r.json())
-      .then(setData);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/team/dashboard");
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          if (!cancelled) setError(d.error || `Failed to load dashboard (${r.status})`);
+          return;
+        }
+        const d = await r.json();
+        if (!cancelled) {
+          setData(d);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Network error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const projectByIdMap = useMemo(() => {
@@ -54,6 +73,12 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-slate-500">Here&apos;s what you&apos;re working on.</p>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <section className="space-y-6">

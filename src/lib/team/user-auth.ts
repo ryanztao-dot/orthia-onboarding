@@ -107,6 +107,16 @@ export interface AuthContext {
   user: PublicUser;
 }
 
+// Pull just the timestamp piece out of `userId:ts:hmac` so we can compare
+// against the user's last password-change time and reject stale sessions.
+function sessionIssuedAt(value: string | undefined): number | null {
+  if (!value) return null;
+  const parts = value.split(":");
+  if (parts.length !== 3) return null;
+  const ts = parseInt(parts[1], 10);
+  return Number.isFinite(ts) ? ts : null;
+}
+
 export async function getCurrentUser(req: NextRequest): Promise<PublicUser | null> {
   const value = req.cookies.get(SESSION_COOKIE)?.value;
   const userId = verifySession(value);
@@ -118,7 +128,20 @@ export async function getCurrentUser(req: NextRequest): Promise<PublicUser | nul
     .eq("id", userId)
     .maybeSingle();
   if (error || !data) return null;
-  return toPublicUser(data as User);
+  const u = data as User & { password_changed_at?: string | null };
+
+  // If the user's password was changed AFTER this session was issued, the
+  // session is stale and must be rejected. Old sessions (from before this
+  // column existed) get a null and are accepted, which is the desired
+  // backward-compatible behavior.
+  const sessionTs = sessionIssuedAt(value);
+  if (u.password_changed_at && sessionTs !== null) {
+    const changedAt = new Date(u.password_changed_at).getTime();
+    if (Number.isFinite(changedAt) && sessionTs < changedAt) {
+      return null;
+    }
+  }
+  return toPublicUser(u);
 }
 
 export async function requireUser(

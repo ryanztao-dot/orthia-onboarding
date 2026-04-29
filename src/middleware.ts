@@ -5,10 +5,19 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Only guard /team/* (not /team itself — that's the password page)
-  // and /api/team/* (except the gate endpoint itself)
+  // and /api/team/* (except the gate endpoint itself).
+  // Password-reset flows are also exempt: a user clicking the email link
+  // on a new device shouldn't be bounced through the org gate first.
   const isGatePage = pathname === "/team";
   const isGateApi = pathname === "/api/team/gate";
-  if (isGatePage || isGateApi) return NextResponse.next();
+  const isPasswordResetPage =
+    pathname === "/team/forgot-password" || pathname === "/team/reset-password";
+  const isPasswordResetApi =
+    pathname === "/api/team/auth/forgot-password" ||
+    pathname === "/api/team/auth/reset-password";
+  if (isGatePage || isGateApi || isPasswordResetPage || isPasswordResetApi) {
+    return NextResponse.next();
+  }
 
   const underTeamUI = pathname.startsWith("/team/");
   const underTeamApi = pathname.startsWith("/api/team/");

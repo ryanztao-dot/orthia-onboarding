@@ -70,7 +70,21 @@ export async function GET(
 
   const { data, error } = await q.order("position", { ascending: true });
   if (error) return NextResponse.json({ error: describeDbError(error) }, { status: 500 });
-  return NextResponse.json({ tasks: data, project });
+
+  const tasks = (data || []) as Task[];
+  // Fetch attachment counts in one round-trip and merge.
+  const attachmentCounts: Record<number, number> = {};
+  if (tasks.length > 0) {
+    const ids = tasks.map((t) => t.id);
+    const { data: attRows } = await teamDb
+      .from("tt_attachments")
+      .select("task_id")
+      .in("task_id", ids);
+    for (const row of (attRows as { task_id: number }[] | null) || []) {
+      attachmentCounts[row.task_id] = (attachmentCounts[row.task_id] || 0) + 1;
+    }
+  }
+  return NextResponse.json({ tasks, project, attachmentCounts });
 }
 
 export async function POST(

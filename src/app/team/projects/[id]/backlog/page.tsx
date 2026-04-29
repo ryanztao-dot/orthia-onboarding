@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useMe } from "../../../team-shell";
 import {
   Avatar,
@@ -33,6 +33,7 @@ export default function BacklogPage({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [attachmentCounts, setAttachmentCounts] = useState<Record<number, number>>({});
   const [showCreateSprint, setShowCreateSprint] = useState(false);
   const [dragging, setDragging] = useState<number | null>(null);
 
@@ -51,6 +52,27 @@ export default function BacklogPage({
     setTasks(p.tasks || []);
     setUsers(u.users || []);
     setSprints(s.sprints || []);
+    setAttachmentCounts(p.attachmentCounts || {});
+  }
+
+  async function uploadToTask(taskId: number, file: File): Promise<boolean> {
+    if (file.type !== "application/pdf") {
+      alert("Only PDF files are allowed.");
+      return false;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(`/api/team/tasks/${taskId}/attachments`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Upload failed.");
+      return false;
+    }
+    load();
+    return true;
   }
 
   useEffect(() => {
@@ -132,6 +154,21 @@ export default function BacklogPage({
     load();
   }
 
+  async function createTask(sprintId: number | null, title: string): Promise<boolean> {
+    const r = await fetch(`/api/team/projects/${id}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, sprint_id: sprintId }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Could not create task.");
+      return false;
+    }
+    load();
+    return true;
+  }
+
   if (!project) return <p className="text-sm text-slate-400">Loading…</p>;
 
   return (
@@ -169,6 +206,11 @@ export default function BacklogPage({
               onStartSprint={() => b.kind === "sprint" && startSprint(b.sprint.id)}
               onCompleteSprint={() => b.kind === "sprint" && completeSprint(b.sprint.id)}
               onDeleteSprint={() => b.kind === "sprint" && deleteSprint(b.sprint.id)}
+              onCreateTask={(title) =>
+                createTask(b.kind === "sprint" ? b.sprint.id : null, title)
+              }
+              attachmentCounts={attachmentCounts}
+              onUpload={uploadToTask}
             />
           );
         })}
@@ -199,6 +241,9 @@ function BucketSection({
   onStartSprint,
   onCompleteSprint,
   onDeleteSprint,
+  onCreateTask,
+  attachmentCounts,
+  onUpload,
 }: {
   bucket: Bucket;
   tasks: Task[];
@@ -210,7 +255,25 @@ function BucketSection({
   onStartSprint: () => void;
   onCompleteSprint: () => void;
   onDeleteSprint: () => void;
+  onCreateTask: (title: string) => Promise<boolean>;
+  attachmentCounts: Record<number, number>;
+  onUpload: (taskId: number, file: File) => Promise<boolean>;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  async function submitNew() {
+    const t = newTitle.trim();
+    if (!t) return;
+    setCreating(true);
+    const ok = await onCreateTask(t);
+    setCreating(false);
+    if (ok) {
+      setNewTitle("");
+      setAdding(false);
+    }
+  }
   const pointsTotal = tasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
   const doneCount = tasks.filter((t) => t.status === "done").length;
 
@@ -258,6 +321,14 @@ function BucketSection({
             {pointsTotal > 0 && ` · ${pointsTotal} pts`}
             {bucket.kind === "sprint" && ` · ${doneCount} done`}
           </span>
+          {canEdit && !adding && (
+            <button
+              onClick={() => setAdding(true)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              + Add task
+            </button>
+          )}
           {bucket.kind === "sprint" && canEdit && (
             <div className="flex items-center gap-1">
               {bucket.sprint.state === "planned" && (
@@ -288,9 +359,9 @@ function BucketSection({
           )}
         </div>
       </header>
-      {tasks.length === 0 ? (
+      {tasks.length === 0 && !adding ? (
         <div className="px-4 py-8 text-center text-xs italic text-slate-400">
-          Drag tasks here.
+          Drag tasks here{canEdit ? " or click + Add task" : ""}.
         </div>
       ) : (
         <ul className="divide-y divide-slate-100">
@@ -313,6 +384,12 @@ function BucketSection({
                 >
                   {t.title}
                 </a>
+                {canEdit && (
+                  <RowAttachmentButton
+                    count={attachmentCounts[t.id] || 0}
+                    onPick={(f) => onUpload(t.id, f)}
+                  />
+                )}
                 <div className="hidden items-center gap-2 sm:flex">
                   {t.labels?.slice(0, 3).map((l) => (
                     <LabelChip key={l} label={l} />
@@ -343,7 +420,82 @@ function BucketSection({
           })}
         </ul>
       )}
+      {adding && canEdit && (
+        <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2.5">
+          <input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitNew();
+              if (e.key === "Escape") {
+                setAdding(false);
+                setNewTitle("");
+              }
+            }}
+            autoFocus
+            placeholder="Task title…"
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+          />
+          <button
+            onClick={submitNew}
+            disabled={creating || !newTitle.trim()}
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {creating ? "Adding…" : "Add"}
+          </button>
+          <button
+            onClick={() => {
+              setAdding(false);
+              setNewTitle("");
+            }}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </section>
+  );
+}
+
+function RowAttachmentButton({
+  count,
+  onPick,
+}: {
+  count: number;
+  onPick: (f: File) => Promise<boolean>;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          setBusy(true);
+          await onPick(f);
+          setBusy(false);
+          if (ref.current) ref.current.value = "";
+        }}
+      />
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          ref.current?.click();
+        }}
+        title={count > 0 ? `${count} attachment${count === 1 ? "" : "s"} — click to add another` : "Upload PDF"}
+        disabled={busy}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+      >
+        <span aria-hidden>📎</span>
+        {count > 0 && <span className="font-medium">{count}</span>}
+      </button>
+    </>
   );
 }
 

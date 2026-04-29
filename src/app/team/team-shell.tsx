@@ -12,10 +12,30 @@ export interface MeResponse {
 export function useMe() {
   const [me, setMe] = useState<MeResponse | null>(null);
   useEffect(() => {
-    fetch("/api/team/auth/me")
-      .then((r) => r.json())
-      .then(setMe)
-      .catch(() => setMe({ user: null }));
+    let cancelled = false;
+    async function loadMe() {
+      // One retry before treating a transient failure as a logout — otherwise
+      // a flaky network bounces users to the login page mid-session.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch("/api/team/auth/me");
+          if (!r.ok && r.status !== 401) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          if (!cancelled) setMe(data);
+          return;
+        } catch {
+          if (attempt === 1) {
+            if (!cancelled) setMe({ user: null });
+            return;
+          }
+          await new Promise((res) => setTimeout(res, 500));
+        }
+      }
+    }
+    loadMe();
+    return () => {
+      cancelled = true;
+    };
   }, []);
   return me;
 }
@@ -147,6 +167,9 @@ export default function TeamShell({
               </a>
               <a href="/team/projects" className="text-slate-600 hover:text-slate-900">
                 Projects
+              </a>
+              <a href="/team/time" className="text-slate-600 hover:text-slate-900">
+                Time
               </a>
               <a href="/team/qr" className="text-slate-600 hover:text-slate-900">
                 QR Code
