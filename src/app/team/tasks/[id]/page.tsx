@@ -1114,6 +1114,13 @@ function BlockedEditor({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(reason || "");
 
+  // Resync the draft when the prop changes (e.g., a refetch updates the
+  // task) so we don't show stale text the next time the user opens the
+  // editor. Skip while editing so we don't clobber in-progress typing.
+  useEffect(() => {
+    if (!editing) setDraft(reason || "");
+  }, [reason, editing]);
+
   if (!blocked) {
     return (
       <button

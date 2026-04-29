@@ -257,6 +257,13 @@ export async function PATCH(
           newBlocked ? "blocker_added" : "blocker_removed",
           newBlocked && newReason ? { reason: newReason } : {},
         );
+      } else if (reasonChanged && newBlocked) {
+        // Reason edited on an already-blocked task — log it so the
+        // history reflects the change.
+        await logActivity(task.id, user.id, "blocker_added", {
+          reason: newReason,
+          edited: true,
+        });
       }
     }
   }
