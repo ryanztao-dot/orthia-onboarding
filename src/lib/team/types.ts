@@ -149,3 +149,31 @@ export interface Mention {
   read_at: string | null;
   created_at: string;
 }
+
+export interface BoothLead {
+  id: number;
+  organization_id: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+
+  lead_type: string | null;
+  practice_name: string | null;
+  city_state: string | null;
+  pms: string | null;
+  practice_type: string | null;
+  visitor_role: string | null;
+  doctor_visit_at: string | null;
+  doctor_present: boolean | null;
+  doctor_email: string | null;
+  doctor_phone: string | null;
+  current_solution: string | null;
+  pain_level: number | null;
+  demo_scheduled: boolean | null;
+  demo_date: string | null;
+  wheel_prize: string | null;
+  heat: string | null;
+  rep: string | null;
+  followed_up: boolean;
+  notes: string | null;
+}

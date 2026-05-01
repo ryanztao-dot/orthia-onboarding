@@ -174,6 +174,12 @@ export default function TeamShell({
               <a href="/team/qr" className="text-slate-600 hover:text-slate-900">
                 QR Code
               </a>
+              <a href="/team/booth-lead" className="text-slate-600 hover:text-slate-900">
+                + Booth Lead
+              </a>
+              <a href="/team/booth-leads" className="text-slate-600 hover:text-slate-900">
+                Booth Leads
+              </a>
               {me.user.role === "admin" && (
                 <a href="/team/settings" className="text-slate-600 hover:text-slate-900">
                   Settings

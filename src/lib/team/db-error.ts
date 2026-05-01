@@ -20,6 +20,7 @@ const TABLE_TO_MIGRATION: Record<string, string> = {
   tt_attachments: "tasks-schema-migration-2.sql",
   tt_password_resets: "tasks-schema-migration-3.sql",
   tt_time_entries: "tasks-schema-migration-4.sql",
+  tt_booth_leads: "tasks-schema-migration-7.sql",
 };
 
 function migrationFor(msg: string): string {
